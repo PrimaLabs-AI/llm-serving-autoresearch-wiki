@@ -8,3 +8,14 @@ using git submodule add https://github.com/openxla/tokamax under raw/code, updat
 using git submodule add https://github.com/openxla/stablehlo under raw/code, update readme
 using git submodule add https://github.com/openxla/xprof under raw/code, update readme
 using git submodule add https://github.com/jax-ml/scaling-book under raw/code, update readme
+using git submodule add https://github.com/karpathy/autoresearch  under raw/code, update readme
+
+
+Connect Obsidian
+This is the crucial step to avoid the extra subfolder trap.
+- Open the Obsidian app.
+- On the launch screen, DO NOT click "Create new vault."
+- Click "Open folder as vault" (usually the second option).
+- Navigate to the my-llm-wiki folder you just created and select it.
+
+Injest sources

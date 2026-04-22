@@ -60,6 +60,7 @@ Then ask the agent to ingest it — see `SCHEMA.md` → `INGEST-CODEBASE`.
 - [tokamax](raw/code/tokamax) — custom TPU/GPU kernels on JAX + Pallas (OpenXLA)
 - [stablehlo](raw/code/stablehlo) — StableHLO operation set + MLIR dialect (OpenXLA)
 - [scaling-book](raw/code/scaling-book) — "How To Scale Your Model": TPU scaling / parallelism reference (JAX ML / Google DeepMind)
+- [autoresearch](raw/code/autoresearch) — Karpathy's autoresearch reference implementation (the methodology this wiki adapts to TPU perf)
 
 ## Authoritative contract
 
