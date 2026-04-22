@@ -28,7 +28,7 @@ tpu_performance_autoresearch_wiki/     ← project root (agent CWD)
     analyses/                          ← syntheses, comparisons, reports you're asked to write
   raw/
     sources/                           ← immutable source files (PDFs, HTML, etc.)
-    code/                              ← checked-out or symlinked repos (immutable here; edits happen in their own checkouts)
+    code/                              ← checked-out or symlinked repos
     profiles/                          ← xprof traces, HLO dumps (immutable)
     assets/                            ← images, figures, plots
 ```
