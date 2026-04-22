@@ -16,3 +16,6 @@
 [submodule "raw/code/xprof"]
 	path = raw/code/xprof
 	url = https://github.com/openxla/xprof
+[submodule "raw/code/autoresearch"]
+	path = raw/code/autoresearch
+	url = https://github.com/karpathy/autoresearch
