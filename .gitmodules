@@ -19,3 +19,6 @@
 [submodule "raw/code/autoresearch"]
 	path = raw/code/autoresearch
 	url = https://github.com/karpathy/autoresearch
+[submodule "raw/code/learning-machine"]
+	path = raw/code/learning-machine
+	url = https://github.com/qihqi/learning_machine
