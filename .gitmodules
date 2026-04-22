@@ -1,0 +1,18 @@
+[submodule "raw/code/xprof-mcp"]
+	path = raw/code/xprof-mcp
+	url = https://github.com/vlasenkoalexey/xprof-mcp
+[submodule "raw/code/torchax"]
+	path = raw/code/torchax
+	url = https://github.com/google/torchax
+[submodule "raw/code/tokamax"]
+	path = raw/code/tokamax
+	url = https://github.com/openxla/tokamax
+[submodule "raw/code/stablehlo"]
+	path = raw/code/stablehlo
+	url = https://github.com/openxla/stablehlo
+[submodule "raw/code/scaling-book"]
+	path = raw/code/scaling-book
+	url = https://github.com/jax-ml/scaling-book
+[submodule "raw/code/xprof"]
+	path = raw/code/xprof
+	url = https://github.com/openxla/xprof
