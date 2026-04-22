@@ -10,6 +10,9 @@ using git submodule add https://github.com/openxla/xprof under raw/code, update 
 using git submodule add https://github.com/jax-ml/scaling-book under raw/code, update readme
 using git submodule add https://github.com/karpathy/autoresearch  under raw/code, update readme
 
+Injest https://huggingface.co/spaces/nanotron/ultrascale-playbook, save pictures references on the page
+Injest https://github.com/qihqi/learning_machine/tree/main/jax-huggingface
+
 
 Connect Obsidian
 This is the crucial step to avoid the extra subfolder trap.
@@ -19,3 +22,4 @@ This is the crucial step to avoid the extra subfolder trap.
 - Navigate to the my-llm-wiki folder you just created and select it.
 
 Injest sources
+injest repos under raw/code, especially pay attention at documentation related to TPU models profiling and optimization, do a deeper injestion on these topics
