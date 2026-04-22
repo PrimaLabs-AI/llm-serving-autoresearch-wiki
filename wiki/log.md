@@ -1,5 +1,72 @@
 # Log
 
+## [2026-04-22] scaffold | Gemma 4 E4B torchax trainer (untested)
+
+**Op**: manual (scaffold code for first execution path of an optimization program)
+**Pages created**: 9 files under `wiki/experiments/gemma4_autoresearch_optimization/torchax/` (1,215 lines total):
+- `train.py` (439 lines) — fine-tune trainer with profile-step capture.
+- `model/sharding.py` (245 lines) — 2D `(dp, tp)` mesh + NeMo-Megatron sharding adapted for Gemma 4 GQA.
+- `model/README.md` (118 lines) — config + sharding assumptions, upstream source of truth.
+- `data.py` (118 lines) — wikitext loader + fixed-length packer.
+- `README.md` (134 lines, includes augmented "Running the trainer" section) — runbook.
+- `model/__init__.py` (46 lines) — re-exports `Gemma4Config`, `Gemma4ForCausalLM`, `Gemma4ForConditionalGeneration`, `Gemma4Model` from `transformers`.
+- `run.sh` (50 lines) — wrapper setting `XLA_FLAGS` + `LIBTPU_INIT_ARGS`, forwards to `train.py`.
+- `config.yaml` (22 lines) — default args.
+- `requirements.txt` (43 lines) — deps pinned against torchax commit `8f957d1`.
+
+**Pages updated**: none (wiki markdown was already in place; only trainer code added).
+
+**Key result**: First execution path of the Gemma 4 program is scaffolded. Status marked **UNTESTED** in multiple places — scaffold written from ingested source pages (jax-huggingface part 2 sharding recipe, torchax codebase architecture, xprof capture docs) without running a single step.
+
+**Research findings worth capturing as wiki content later (not yet pages)**:
+- **Gemma 4 E4B is public Apache-2.0**, not gated (login still required for HF hub). `config.json` readable at `https://huggingface.co/google/gemma-4-E4B/raw/main/config.json`.
+- **Architecture specifics**: 42 layers, hidden=2560, `num_attention_heads=8`, `num_key_value_heads=2`, `head_dim=256`, `intermediate_size=10240`, vocab=262144, sliding_window=512, max_position=131072. "E4B" = effective-4B via Per-Layer Embeddings; **~8B with embeddings**.
+- **Novelties vs Gemma 3**: hybrid attention (local SW 512 + global), `num_kv_shared_layers=18` (cross-layer KV sharing), `rope_type=proportional` with `partial_rotary_factor=0.25` on full-attention layers, `final_logit_softcapping=30.0`, `gelu_pytorch_tanh` MLP, `tie_word_embeddings=true`.
+- **Multimodal**: E4B ships vision + audio branches. Trainer targets text-only (`Gemma4ForCausalLM` with fallback to `Gemma4ForConditionalGeneration`).
+- **Sharding corner case**: `num_kv_heads=2` does NOT divide `tp=8`. Default partitioning therefore **replicates K/V projections** rather than silently dropping parallelism — flagged as a future hypothesis.
+- **Canonical class names** (per HF `transformers` main, `transformers_version: 5.5.0.dev0`): `Gemma4Config`, `Gemma4ForCausalLM`, `Gemma4ForConditionalGeneration`, `Gemma4Model`. Transformers ships Gemma 4 in `src/transformers/models/gemma4/`.
+- **DeepMind gemma repo** exposes `gm.nn.Gemma4_E4B()` + `gm.ckpts.CheckpointPath.GEMMA4_E4B_IT` — native-JAX reference for the `../jax/` folder when that path is activated.
+
+**Assumptions flagged for baseline-run verification**:
+1. `Gemma4ForCausalLM` import works; falls back to `ForConditionalGeneration` if not.
+2. HF state-dict key naming matches Gemma-family convention (`q_proj`, `k_proj`, …, `embed_tokens`) — regex-based sharder in `sharding.py` is fragile and should be verified with `print(list(model.state_dict())[:20])`.
+3. `num_kv_shared_layers=18` may surface as extra/renamed params not covered by the regex — they default to replicated (conservative).
+4. torchax API at commit `8f957d1` matches the calls in `train.py` (`JittableModule`, `interop.jax_view/torch_view`, `enable_performance_mode`, `apply_jax_`, `save_checkpoint`).
+5. `wikitext-2-raw-v1` chosen as default (small, fast smoke-test). `wikitext-103-raw-v1` available via flag.
+6. HF pytree registration targets `CausalLMOutputWithPast` + `DynamicCache`; `StaticCache` registration deferred to a future decode hypothesis.
+7. `final_logit_softcapping=30.0` assumed to be implemented inside HF's forward (Gemma 2/3 precedent).
+
+**Known gaps in the scaffold**:
+- `--grad_accum` is parsed but not threaded through the training loop.
+- No `with_sharding_constraint` activation annotations inside the forward (relies on GSPMD propagation from weight shardings).
+- No checkpoint *load* path — `--checkpoint_dir` only saves.
+- Splash-attention swap (program hypothesis #1) not wired yet.
+- Optimizer states inherit gradient dtype (bf16 if forward is bf16); no explicit fp32 promotion — a baseline concern.
+
+**Next steps for the human** (runbook):
+1. `pip install -r wiki/experiments/gemma4_autoresearch_optimization/torchax/requirements.txt` on a v6e-8 host.
+2. `huggingface-cli login` with a token that's accepted the Gemma license.
+3. `bash wiki/experiments/gemma4_autoresearch_optimization/torchax/run.sh --steps 5 --profile_steps 3`.
+4. File the baseline numbers into `wiki/experiments/gemma4_autoresearch_optimization/<YYYY-MM-DD>-baseline.md` (the first dated experiment page).
+
+## [2026-04-22] file-program | Gemma 4 E4B — TPU autoresearch optimization
+
+**Op**: manual (file a new optimization program)
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/README.md` — program page for `google/gemma-4-E4B` on TPU v6e via torchax.
+**Pages updated**: `wiki/index.md` — Models section (0 → 1).
+
+**Key result**: First `model/` analogue filed. 16 open hypotheses consolidated from Wave 1/2 findings, the xprof-mcp TPU_OPTIMIZATION guide, and the Ultra-Scale Playbook — now have a place to attach. Baseline not yet captured; hypothesis #0 in the ranked list is "capture baseline profile."
+
+**Notes**:
+- **Intentional schema deviation**: SCHEMA.md specifies `wiki/models/<slug>.md` for model-under-optimization pages and `wiki/experiments/<YYYY-MM-DD>-<slug>.md` (flat) for experiments. This program uses a **nested folder** `wiki/experiments/gemma4_autoresearch_optimization/` that co-locates the program README (functions as the model page), the dated experiment files (schema-conformant names inside the folder), and optionally local scripts/code. Rationale: a long-running optimization program generates many related files and benefits from being namespaced together; the flat experiments/ directory would make it hard to find "everything about Gemma 4" vs. "everything about the next model."
+- This deviation is the **second** intentional one in the wiki (first was the `autoresearch` codebase page's reframed "Structural surfaces we borrow" H2). If it works, the next SCHEMA.md edit should codify `wiki/experiments/<program-slug>/` as a permitted layout for multi-experiment programs, with the README.md inside doubling as the `model` page.
+- **Code location decision (2026-04-22)**: option (b) — inside the program folder — selected by human. Further refined: **split into two sibling subfolders by execution path** rather than one `code/` folder:
+  - `wiki/experiments/gemma4_autoresearch_optimization/torchax/` — primary, Gemma 4 via torchax.
+  - `wiki/experiments/gemma4_autoresearch_optimization/jax/` — secondary, native-JAX port (port-equivalence discipline required: must reproduce torchax-baseline outputs within bf16 tolerance before perf numbers count).
+  Each subfolder has its own README documenting conventions (dated copies for divergent scripts, relative-path references from experiment pages, binaries go to `raw/profiles/`, not these folders). The program's top-level README links both. Next SCHEMA.md update should codify `wiki/experiments/<program-slug>/` folders with execution-path-named subfolders for code as a permitted layout.
+- Hypotheses are listed on the program page but **not filed as `wiki/hypotheses/*.md` individually** — the program page serves as the consolidated ranked list. Once individual hypotheses become in-flight experiments, each will be promoted to `wiki/hypotheses/<slug>.md` per schema.
+- **Gemma 4 E4B**: user confirmed the identifier is correct (per https://huggingface.co/google/gemma-4-E4B). Claude's training cutoff predates this model's release; treating it as a black-box target with Gemma-family architecture (GQA, SwiGLU, RMSNorm) until the baseline ingest confirms exact config.
+
 ## [2026-04-22] lint | link hygiene + cross-link + 4 missing stubs
 
 **Op**: lint (automated pass, 2 parallel subagents + main-thread checks)

@@ -1,8 +1,8 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-22 — 122 pages (8 codebases + 33 sources + 81 concepts)*
+*Last updated: 2026-04-22 — 123 pages (8 codebases + 33 sources + 81 concepts + 1 model-program)*
 
-## Models (0)
-*None yet.*
+## Models (1)
+- [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
 
 ## Hypotheses — ranked, open only (0)
 *None yet.*

@@ -23,3 +23,15 @@ This is the crucial step to avoid the extra subfolder trap.
 
 Injest sources
 injest repos under raw/code, especially pay attention at documentation related to TPU models profiling and optimization, do a deeper injestion on these topics
+
+Idea is to import google/gemma-4-E4B, make it to work on TPU using torchax, convert model to JAX and apply autoresearch approach to optimize its performance.
+Unlike with original autoreserch approach we are not optimizing model quality metrics, we are optimizing model performance (step time, mfu, tps).
+
+Populate tpu_performance_autoresearch_wiki/wiki/experiments/gemma4_autoresearch_optimization using this information.
+
+Find gemma model code on https://huggingface.co/google/gemma-4-E4B (also can use https://github.com/google-deepmind/gemma/tree/main for references). Import model code under tpu_performance_autoresearch_wiki/wiki/experiments/gemma4_autoresearch_optimization/torchax.
+
+Create torchax trainer that can train for finetune model from checkpoint. Use internal knowledge for information how to partition model and get it working using torchax.
+
+Trainer can use wiki dataset by default. It should allow configuring nubmer of steps to run, and enable profiling api to dump profiles for specified steps.
+
