@@ -219,7 +219,15 @@ Template per block (append-only, commit alongside code):
 
 ## The experiment loop
 
-**Branch model**: not used yet — one session, one branch (`main`). Each experiment is a new code state committed to main alongside its experiment page and `OBSERVATIONS.md` block; `RESULTS.tsv` is appended once per run. If the session length grows enough to need branch isolation, promote to the reference's branching model.
+**Branch model (MANDATORY — updated 2026-04-23 after 16-experiment retrospective)**: each experiment lives on **its own branch**, forked from the current session-trunk tip. The model is inherited from the core autoresearch doc and applies to this program.
+
+- **Session trunk**: `perfautoresearch/v6e4-<YYYYMMDD>` (e.g. `perfautoresearch/v6e4-20260423`). Created once per session, branched from `main`. Holds only **kept** experiments.
+- **Per-experiment branch**: `perfautoresearch/v6e4-<YYYYMMDD>-exp<NN>-<short-slug>`. Forked from the session-trunk tip at the start of each experiment. All code edits + the experiment page + the `OBSERVATIONS.md` block + the `RESULTS.tsv` row for this experiment commit to this branch.
+- **Keep**: `git checkout <session-trunk>` + `git merge --no-ff <exp-branch>`. The `--no-ff` preserves a merge commit so the trunk history shows which changes were kept as discrete units. Next experiment forks from this new trunk tip.
+- **Discard / crash**: `git checkout <session-trunk>`. Leave the experiment branch alone — unmerged but present, fully recoverable. If the `OBSERVATIONS.md` update on the discarded branch has useful follow-ups, cherry-pick just that file onto the trunk.
+- **Retrospective**: the first 16 experiments in this program **violated this model** — code was overwritten in-place on `main` without per-experiment branches. Exps 1–16's exact intermediate code states are not recoverable from git; only the experiment pages describe what the code change was. The violation is preserved in the commit history as `71a45ae exp1-16: compound best-config reached` (the consolidation commit). From exp 17 onward, this discipline is enforced.
+
+No `git reset --hard` in the happy path. Failed attempts are parked as unmerged branches for later review; the trunk's git log is a clean record of only the *kept* changes.
 
 LOOP FOREVER:
 
