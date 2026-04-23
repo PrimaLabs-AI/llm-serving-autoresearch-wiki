@@ -96,19 +96,21 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
     block_q = min(512, seq_len)
     block_kv = min(512, seq_len)
     block_kv_compute = min(512, seq_len)
+    # Exp 17 — enable the fused backward kernel. `use_fused_bwd_kernel=True`
+    # requires the dQ-path block sizes (`block_q_dq`, `block_kv_dq`) to be
+    # OMITTED (splash raises `ValueError: Block sizes for dq kernel are
+    # not needed with a fused kernel` if they're set, which broke exp 16
+    # and triggered our XLA fallback for every layer).
     block_sizes = sa_kernel.BlockSizes(
         block_q=block_q,
         block_kv=block_kv,
         block_kv_compute=block_kv_compute,
-        # Backward-pass tiles — splash hard-wires these to 128 in
-        # `SplashConfig.get_default()` via tokamax, but here we pick 512
-        # to match fwd; `None` falls back to the BlockSizes defaults.
+        # Backward-pass tiles for dKV. The fused path still uses these.
         block_q_dkv=min(512, seq_len),
         block_kv_dkv=min(512, seq_len),
         block_kv_dkv_compute=min(512, seq_len),
-        block_q_dq=min(512, seq_len),
-        block_kv_dq=min(512, seq_len),
-        use_fused_bwd_kernel=False,
+        # block_q_dq / block_kv_dq intentionally omitted — see note above.
+        use_fused_bwd_kernel=True,
     )
 
     # Per-head mask. MHA mode requires exactly `num_q_heads` masks (splash
