@@ -212,3 +212,9 @@ __marimo__/
 # .gitkeep so relative links don't break.
 raw/profiles/*
 !raw/profiles/.gitkeep
+
+# Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
+# Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`
+# pages and OBSERVATIONS.md (both tracked); RESULTS.tsv is just a working
+# ledger that's regenerable from the experiment pages.
+wiki/experiments/*/RESULTS.tsv

@@ -294,6 +294,20 @@ def main(argv: Optional[list] = None) -> int:
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
     print(f"[load] done in {time.perf_counter() - t0:.1f}s")
 
+    # Exp 8 — swap the default XLA attention path for JAX Pallas splash
+    # attention. Registers a new `ALL_ATTENTION_FUNCTIONS` entry and flips
+    # `_attn_implementation` on every Gemma4Text layer's `self.config`
+    # (shared across layers). Handles causal + sliding-window-512 via
+    # splash mask builders; GQA 4:1 is native. See model/pallas_attention.py.
+    from model.pallas_attention import register_splash_attention  # noqa: E402
+    impl_key = register_splash_attention(mesh)
+    # Gemma4Config is a composite: the real attn-impl flag lives on the text
+    # sub-config used by Gemma4TextAttention. Set both defensively.
+    if hasattr(model.config, "text_config"):
+        model.config.text_config._attn_implementation = impl_key
+    model.config._attn_implementation = impl_key
+    print(f"[attention] using splash_pallas Pallas kernel")
+
     # Build sharding plan off the torch-side state dict keys --------------
     plan = get_param_sharding(model, mesh)
     for note in plan.notes:
@@ -331,7 +345,17 @@ def main(argv: Optional[list] = None) -> int:
     optimizer = optax.adamw(learning_rate=lr_schedule, weight_decay=0.01)
 
     # Extract jax-side pytree of weights + init optimizer state.
+    # Re-apply shardings from the plan to every weight: the tied-weight dedup
+    # inside JittableModule can leave a parameter on a single device even
+    # though we applied sharding before load_state_dict. Re-sharding is a
+    # no-op if the layout already matches and fixes stragglers (Gemma 4's
+    # tied lm_head ↔ embed_tokens was the one we saw).
+    _replicated = replicated_sharding(mesh)
     weights = interop.jax_view(jmodel.params)  # jax-native dict
+    weights = {
+        k: jax.device_put(v, plan.shardings.get(k, _replicated))
+        for k, v in weights.items()
+    }
     buffers = interop.jax_view(jmodel.buffers)
     opt_state = optimizer.init(weights)
 
@@ -385,11 +409,16 @@ def main(argv: Optional[list] = None) -> int:
             logits = out.logits  # (B, T, V)
             # Shift is already applied in data.py — labels align with logits.
             # CE across vocab, mean over non-ignore.
+            # Exp 10: keep log_softmax in bf16 (not upcasting to fp32). Drops
+            # the ~4 GiB `[B, S, V=262144]` fp32 logits tensor that the
+            # xprof-mcp TPU-optimization guide calls out. Gemma 4's
+            # final_logit_softcapping=30.0 bounds the logits so bf16
+            # log_softmax is numerically stable enough. We still promote the
+            # final scalar loss to fp32 below.
             vocab = logits.shape[-1]
-            flat_logits = logits.reshape(-1, vocab).to(torch.float32)
+            flat_logits = logits.reshape(-1, vocab)
             flat_labels = tlabels.reshape(-1)
-            mask = (flat_labels != IGNORE_INDEX).to(torch.float32)
-            # Use log_softmax + gather to avoid CE numerical quirks in bf16.
+            mask = (flat_labels != IGNORE_INDEX).to(flat_logits.dtype)
             log_probs = torch.nn.functional.log_softmax(flat_logits, dim=-1)
             safe_labels = torch.where(flat_labels == IGNORE_INDEX,
                                       torch.zeros_like(flat_labels),
@@ -398,7 +427,14 @@ def main(argv: Optional[list] = None) -> int:
             loss = -(picked * mask).sum() / mask.sum().clamp_min(1.0)
         return interop.jax_view(loss)
 
-    grad_fn = jax.value_and_grad(forward_loss)
+    # Reverted to checkpoint (not offload) — offload_dot_with_no_batch_dims
+    # hit the same compile-time peak as checkpoint (XLA's planner doesn't
+    # account for the offload as freed HBM at compile-time). Stick with
+    # the exp 5 winning policy while we figure out seq=2048 batch=2.
+    from jax import checkpoint_policies as _ckpt_policies
+    grad_fn = jax.value_and_grad(
+        jax.checkpoint(forward_loss, policy=_ckpt_policies.checkpoint_dots_with_no_batch_dims)
+    )
 
     def train_step(weights, buffers, opt_state, input_ids, labels):
         with jax.named_scope("train_step"):
@@ -409,8 +445,11 @@ def main(argv: Optional[list] = None) -> int:
                 weights = optax.apply_updates(weights, updates)
         return loss, weights, opt_state
 
-    # in_shardings: weights/opt_state follow existing shardings; inputs use
-    # input_sharding; buffers are replicated.
+    # Attempted to pin output shardings to fix step-1 recompile, but the
+    # tied lm_head↔embed_tokens sharding plumbing in torchax's JittableModule
+    # doesn't cooperate: out_shardings for the tied key collapses to a
+    # single-device sharding and jit rejects the mismatch. Left as a
+    # documented refuted attempt; step-1 recompile remains open (~150 s).
     jitted_step = jax.jit(
         train_step,
         donate_argnums=(0, 2),  # donate weights + opt_state buffers

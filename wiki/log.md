@@ -1,5 +1,44 @@
 # Log
 
+## [2026-04-23] protocol + experiments | Gemma 4 E4B program — program.md formalization + exp2 crash
+
+**Op**: manual (protocol formalization) + run-experiment (exp2, crashed).
+**Pages created**:
+- `wiki/experiments/gemma4_autoresearch_optimization/program.md` — the agent-facing protocol for this program, adapted from the sibling-wiki TorchTitan autoresearch template but specialized to Gemma 4 E4B / torchax / v6e-4.
+- `wiki/experiments/gemma4_autoresearch_optimization/RESULTS.tsv` — tab-separated ledger (gitignored via `wiki/experiments/*/RESULTS.tsv`).
+- `wiki/experiments/gemma4_autoresearch_optimization/OBSERVATIONS.md` — skim-and-reason aggregation log; backfilled with baseline + exp1 + exp2 blocks.
+- `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp2-pin-out-shardings.md` — Exp 2 experiment page (crashed/invalid, reverted).
+
+**Pages updated**:
+- Program `README.md` — stripped the in-README "Optimization loop procedure" section; replaced with a short "How to start the optimization loop" pointer to `program.md`. History extended for exp2 + the protocol formalization.
+
+**Key result**: **Exp 2 CRASHED** pre-trace with `ValueError: Received incompatible devices` on `weights['lm_head.weight']`. Attempt to pin `out_shardings=(loss_ns, weights_ns, opt_state_ns)` on `jax.jit` to fix the ~150 s step-1 recompile hit a tied-weight-dedup plumbing issue in torchax's `JittableModule` — the tied `lm_head.weight` ↔ `embed_tokens.weight` emits an `out_shardings` leaf whose device list collapses to `[0]` even though the input sharding is full-mesh `[0, 1, 3, 2]`. Reverted the `train.py` change; step-1 recompile remains open. Hypothesis marked `verdict: invalid` (pre-trace crash, nothing measured) — still viable under a different implementation (`dedup_parameters=False` + manual tying, or `with_sharding_constraint` inside the train step).
+
+**Notes**:
+- **Protocol formalization**: Karpathy-autoresearch-style discipline now lives in a dedicated `program.md` that defines the fixed bindings (hardware, conda env, trainer path, baseline command, libtpu version, profile/HLO conventions, xprof_mcp server), the architectural invariants (can/cannot-change tables for Gemma 4), the measurement protocol (TPS primary, MFU secondary, median steps 6–15), the ledger + observations schema, the full experiment loop, and accumulated heuristics. Future experiments start from reading `program.md` and tail-ing `OBSERVATIONS.md` / `RESULTS.tsv`.
+- **Retroactive backfill**: baseline + exp1 + exp2 are transcribed into `RESULTS.tsv` and `OBSERVATIONS.md` for continuity — these experiments predate the formal protocol but provide the foundation the protocol was written against.
+- **libtpu is at 0.0.40, the latest** (verified across PyPI, `libtpu-lts-releases`, `libtpu-nightly-releases`). The exp1 "unknown flag" failure was a name error (real name is `--xla_tpu_overlap_compute_collective_tc`, not `_comms`), not a version issue. Documented the symbol-dump-as-source-of-truth trick in `program.md` heuristics.
+- **Discovered gotcha**: tied `lm_head` ↔ `embed_tokens` + torchax `JittableModule.dedup_parameters=True` + HF `load_state_dict(assign=True)` interact in a way that confuses `out_shardings` construction. Logged as a `program.md` heuristic; a future experiment can route around it via `dedup_parameters=False`.
+- Step-1 recompile mitigation deferred; next experiment focuses on a structural memory-saving change (per the memory-ceiling rule — baseline hit 95% HBM).
+
+## [2026-04-23] experiment | Gemma 4 E4B — Exp 1: async-collective XLA flags (REFUTED)
+
+**Op**: run-experiment (first optimization-loop cycle on the Gemma 4 program).
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp1-async-collective-flags.md`.
+**Pages updated**: program `README.md` history (baseline-seq-1024 + Exp 1).
+**Raw artifacts**: `raw/profiles/2026-04-23-gemma4-loss-confirm/` (20-step seq=1024 baseline, clean loss), `raw/profiles/2026-04-23-gemma4-exp1-async-collectives/` (exp1 trace). Both symlinked into the live xprof instance as `gemma4_baseline_seq1024_20260423` and `gemma4_exp1_async_collectives_20260423`.
+
+**Key result**: **Hypothesis REFUTED.** Enabling `--xla_tpu_enable_latency_hiding_scheduler` + `--xla_tpu_enable_async_collective_fusion` (+ `fuse_all_gather`, `multiple_steps`) via `LIBTPU_INIT_ARGS` regressed steady-state step time **134.4 → 168.3 ms (+25 %)** at seq=1024, batch=1, FSDP=4, v6e-4. Collectives got faster (all-gather −5 ms, all-reduce-scatter −9 ms) but compute-fusion memory traffic blew up (convolution fusion +2.5× bytes, loop fusion +1.9×). Scheduler gained freedom to reorder; it fused collectives but broke compute-order locality. Loss trajectory preserved (bf16-reorder noise only).
+
+**Notes**:
+- 20-step loss-descent confirmation (pre-experiment): loss 3.93 → 1.97 over 20 steps at seq=1024; step time stable at 134.4 ± 0.5 ms. Confirms the baseline scaffold is training correctly.
+- Ran full autoresearch loop: baseline profile → hypothesis pick (#9) → experiment → profile diff → verdict → file page → pick next hypothesis. First complete cycle on this program.
+- **Flag-placement gotcha**: `--xla_tpu_*` flags go in `LIBTPU_INIT_ARGS`, **not** `XLA_FLAGS`. First attempt bombed with `parse_flags_from_env.cc:234 Unknown flags in XLA_FLAGS`. Logged for future experiments — hypothesis-writers should not trust the "XLA flag" name.
+- **Libtpu 0.0.40 does not know `--xla_tpu_overlap_compute_collective_comms`.** Dropped before the successful run. Good instance of a flag catalog drifting vs. the installed runtime.
+- **xprof-mcp tools used in the loop**: `list_runs`, `get_overview`, `get_top_hlo_ops`, `get_op_profile`, `get_memory_profile`, `get_device_information`. The HLO-op-level before/after diff was the decisive evidence for "refuted" — wall-clock alone would have been ambiguous, but the bytes-accessed explosion made the mechanism clear.
+- Hypothesis parked, not retired — at larger effective batch (via remat or NaN-fix at seq=2048) the collective-overlap win may swamp the compute-locality loss. Revisit after hypothesis #6.
+- Next natural hypothesis: **fix the step-1 recompile** (explicit `in_shardings` / `out_shardings` on `jax.jit`) — saves ~150 s per experiment run, pure iteration-speed win. Then **#6 selective remat**.
+
 ## [2026-04-22] experiment | Gemma 4 E4B baseline (v6e-4, FSDP)
 
 **Op**: run-experiment (baseline infrastructure check)
