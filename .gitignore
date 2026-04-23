@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Experiment profiles — xprof traces, HLO dumps, and other large binary
+# artifacts captured during runs. Regenerable; the referring experiment
+# page records the path and config. Keep the directory tracked via
+# .gitkeep so relative links don't break.
+raw/profiles/*
+!raw/profiles/.gitkeep

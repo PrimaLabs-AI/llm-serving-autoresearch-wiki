@@ -1,22 +1,27 @@
 """Mesh + per-parameter sharding rules for Gemma 4 on TPU.
 
-Adapted from the jax-huggingface Part 2 NeMo-Megatron tensor-parallel recipe
-(see `raw/code/learning-machine/jax-huggingface/jax_hg_02.py`), generalized
-for a 2D (dp, tp) mesh and extended to GQA (Gemma 4's `num_kv_heads=2` does
-not divide a typical TP size of 8 — we replicate K/V by default).
+Two strategies are supported:
 
-Not exercised — see the UNTESTED warning in `train.py`.
+* ``fsdp`` (**default**) — every ≥2D parameter is sharded along its largest
+  divisible dim over a 1D ``'fsdp'`` mesh axis that spans all devices.
+  GSPMD inserts the all-gather (fwd) / reduce-scatter (bwd) automatically.
+  Matches PyTorch FSDP's ``FULL_SHARD`` semantics. Default for fine-tuning.
+* ``tp`` — NeMo-Megatron tensor-parallel recipe (columnwise Q / MLP
+  up/gate, rowwise O / MLP down, vocab-sharded embed). Adapted from the
+  jax-huggingface Part 2 recipe for an 8-way TP on v6e-8. Use when a
+  model doesn't fit on one chip's HBM or when decode latency is the
+  headline metric.
 
-Shardings returned are `jax.sharding.NamedSharding` objects built on the
-mesh returned by `get_mesh(dp, tp)`. The matcher keys off substrings in the
-parameter's fully-qualified name (`model.layers.0.self_attn.q_proj.weight`,
-etc.) — the same strategy Han Qi used in jax-huggingface Part 2. This is
-fragile to upstream rename; re-check on every transformers bump.
+For Gemma 4 E4B (~8B params with embeddings, ~4.5B effective via
+Per-Layer Embeddings) FSDP is the right default — weights fit on one
+v6e chip but optimizer state (AdamW fp32 ≈ 12 bytes/param = 96 GB) does
+not. FSDP drops optimizer-state-per-chip to ~12 GB.
+
+Not exercised — see the UNTESTED warning in ``train.py``.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
 
@@ -26,19 +31,42 @@ from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 
 # -----------------------------------------------------------------------------
-# Mesh construction
+# Mesh axis names — only the axes actually present in a given mesh are used.
 # -----------------------------------------------------------------------------
 
+AXIS_FSDP = "fsdp"
 AXIS_DP = "dp"
 AXIS_TP = "tp"
 
 
-def get_mesh(dp: int = 1, tp: Optional[int] = None) -> Mesh:
-    """Build a (dp, tp) 2D device mesh.
+# -----------------------------------------------------------------------------
+# Mesh construction
+# -----------------------------------------------------------------------------
 
-    Defaults `tp` to `jax.device_count()` so a v6e-8 host runs as TP=8, DP=1.
-    If `dp * tp != jax.device_count()` we raise — refuse to silently drop
-    chips.
+
+def get_fsdp_mesh(fsdp: Optional[int] = None) -> Mesh:
+    """1D FSDP mesh spanning all visible devices.
+
+    If ``fsdp`` is unset, uses ``jax.device_count()``. Refuses to silently
+    drop devices.
+    """
+    n = jax.device_count()
+    if fsdp is None:
+        fsdp = n
+    if fsdp != n:
+        raise ValueError(
+            f"FSDP mesh size {fsdp} != jax.device_count()={n}. "
+            f"Pass --fsdp {n} or unset the flag."
+        )
+    devices = mesh_utils.create_device_mesh((fsdp,))
+    return Mesh(devices, axis_names=(AXIS_FSDP,))
+
+
+def get_tp_mesh(dp: int = 1, tp: Optional[int] = None) -> Mesh:
+    """2D (dp, tp) mesh for the tensor-parallel strategy.
+
+    Defaults ``tp`` to ``jax.device_count() // dp``. Raises if
+    ``dp * tp != jax.device_count()``.
     """
     if tp is None:
         tp = jax.device_count() // max(dp, 1)
@@ -46,58 +74,104 @@ def get_mesh(dp: int = 1, tp: Optional[int] = None) -> Mesh:
     avail = jax.device_count()
     if total != avail:
         raise ValueError(
-            f"Mesh (dp={dp}, tp={tp}) needs {total} devices, "
+            f"TP mesh (dp={dp}, tp={tp}) needs {total} devices, "
             f"but jax.device_count()={avail}."
         )
     devices = mesh_utils.create_device_mesh((dp, tp))
     return Mesh(devices, axis_names=(AXIS_DP, AXIS_TP))
 
 
+def get_mesh(strategy: str = "fsdp", *, dp: int = 1, tp: Optional[int] = None,
+             fsdp: Optional[int] = None) -> Mesh:
+    """Dispatch to the mesh matching ``strategy``."""
+    if strategy == "fsdp":
+        return get_fsdp_mesh(fsdp)
+    if strategy == "tp":
+        return get_tp_mesh(dp=dp, tp=tp)
+    raise ValueError(f"unknown strategy: {strategy!r}")
+
+
+def _is_fsdp_mesh(mesh: Mesh) -> bool:
+    return AXIS_FSDP in mesh.axis_names
+
+
 # -----------------------------------------------------------------------------
-# Parameter sharding rules
+# Param sharding — FSDP strategy
 # -----------------------------------------------------------------------------
-
-# The Gemma-family HF param-name convention (as of transformers main, 2026-04):
-#
-#   model.embed_tokens.weight                                       (vocab, hidden)
-#   model.layers.<i>.self_attn.q_proj.weight                        (num_heads*head_dim, hidden)
-#   model.layers.<i>.self_attn.k_proj.weight                        (num_kv_heads*head_dim, hidden)
-#   model.layers.<i>.self_attn.v_proj.weight                        (num_kv_heads*head_dim, hidden)
-#   model.layers.<i>.self_attn.o_proj.weight                        (hidden, num_heads*head_dim)
-#   model.layers.<i>.mlp.gate_proj.weight                           (intermediate, hidden)
-#   model.layers.<i>.mlp.up_proj.weight                             (intermediate, hidden)
-#   model.layers.<i>.mlp.down_proj.weight                           (hidden, intermediate)
-#   model.layers.<i>.input_layernorm.weight                         (hidden,)
-#   model.layers.<i>.post_attention_layernorm.weight                (hidden,)
-#   model.norm.weight                                               (hidden,)
-#   lm_head.weight                                                  (vocab, hidden)  # often tied with embed_tokens
-#
-# Gemma 3 also carried `pre_feedforward_layernorm`, `post_feedforward_layernorm`
-# and rotary `inv_freq` buffers; Gemma 4 likely keeps those. Unknown names
-# default to replicated (conservative).
-
-
-# HF matmul weights are stored with shape (out, in). So column-sharding is
-# sharding on the **first** (row) axis of the weight, and row-sharding is
-# sharding on the **second** (column) axis. This mirrors jax-huggingface
-# Part 2's recipe.
-_COL_SHARD_SUBSTR = ("q_proj", "k_proj", "v_proj", "gate_proj", "up_proj")
-_ROW_SHARD_SUBSTR = ("o_proj", "down_proj")
-_ROW_SHARD_EMBED = ("embed_tokens", "lm_head")
 
 
 @dataclass
 class ShardingPlan:
-    """What to shard and how. Returned by `plan_shardings`."""
+    """What to shard and how. Returned by the plan_* functions."""
 
     shardings: Dict[str, NamedSharding]
-    # For reporting: bucket name -> list of param names that fell in it.
-    buckets: Dict[str, list]
-    notes: list  # strings, flags for the report / logging
+    buckets: Dict[str, list]  # bucket name -> param names (for reporting)
+    notes: list  # strings for the report / logging
+
+
+def plan_fsdp_shardings(
+    param_names: Iterable[str],
+    param_shapes: Mapping[str, Tuple[int, ...]],
+    mesh: Mesh,
+) -> ShardingPlan:
+    """FSDP: shard every ≥2D param on its largest divisible dim over ``'fsdp'``.
+
+    1D params (norms, biases, rotary buffers) are sharded if the dim is
+    divisible by ``fsdp``, else replicated (conservative).
+    Params with no dim divisible by ``fsdp`` are replicated with a note.
+    """
+    fsdp_size = mesh.shape[AXIS_FSDP]
+    buckets: Dict[str, list] = {"fsdp_shard": [], "replicated": [], "undivisible": []}
+    shardings: Dict[str, NamedSharding] = {}
+    notes: list = []
+
+    for name in param_names:
+        shape = param_shapes.get(name)
+        if shape is None or len(shape) == 0:
+            shardings[name] = NamedSharding(mesh, P())
+            buckets["replicated"].append(name)
+            continue
+
+        # Find largest dim divisible by fsdp_size.
+        ordered = sorted(range(len(shape)), key=lambda i: -shape[i])
+        shard_dim: Optional[int] = None
+        for d in ordered:
+            if shape[d] % fsdp_size == 0:
+                shard_dim = d
+                break
+
+        if shard_dim is None:
+            shardings[name] = NamedSharding(mesh, P())
+            buckets["undivisible"].append(name)
+            continue
+
+        spec_axes = [None] * len(shape)
+        spec_axes[shard_dim] = AXIS_FSDP
+        shardings[name] = NamedSharding(mesh, P(*spec_axes))
+        buckets["fsdp_shard"].append(name)
+
+    if buckets["undivisible"]:
+        notes.append(
+            f"FSDP: {len(buckets['undivisible'])} param(s) have no dim divisible "
+            f"by fsdp={fsdp_size}; they are replicated. Example: "
+            f"{buckets['undivisible'][:3]}"
+        )
+
+    return ShardingPlan(shardings=shardings, buckets=buckets, notes=notes)
+
+
+# -----------------------------------------------------------------------------
+# Param sharding — TP strategy (NeMo-Megatron)
+# -----------------------------------------------------------------------------
+
+# Gemma-family HF param-name convention (as of transformers main, 2026-04).
+_COL_SHARD_SUBSTR = ("q_proj", "gate_proj", "up_proj")
+_ROW_SHARD_SUBSTR = ("o_proj", "down_proj")
+_ROW_SHARD_EMBED = ("embed_tokens", "lm_head")
 
 
 def _gqa_can_shard_kv(num_kv_heads: int, tp: int) -> bool:
-    """Can we shard K/V heads over `tp` without replication?
+    """Can we shard K/V heads over ``tp`` without replication?
 
     Requires tp to divide num_kv_heads. For Gemma 4 E4B (kv=2, tp=8) this is
     False: we would need a broadcasted GQA sharding, not the basic row/column
@@ -106,44 +180,32 @@ def _gqa_can_shard_kv(num_kv_heads: int, tp: int) -> bool:
     return num_kv_heads % tp == 0 and num_kv_heads >= tp
 
 
-def plan_shardings(
+def plan_tp_shardings(
     param_names: Iterable[str],
     mesh: Mesh,
     *,
     num_kv_heads: int,
     num_attention_heads: int,
 ) -> ShardingPlan:
-    """Decide `PartitionSpec` for every parameter name.
-
-    `param_names` is what `model.state_dict().keys()` yields after the model
-    is loaded. We don't need the shapes — the column/row convention is
-    positional.
-    """
+    """NeMo-Megatron TP recipe adapted for GQA."""
     tp = mesh.shape[AXIS_TP]
-    dp = mesh.shape[AXIS_DP]  # unused for parameter sharding; reserved for activations
 
-    notes = []
+    notes: list = []
     if num_attention_heads % tp != 0:
         notes.append(
-            f"WARNING: num_attention_heads={num_attention_heads} not divisible by tp={tp}; "
-            "Q/O sharding will be wrong. Consider a different tp."
+            f"WARNING: num_attention_heads={num_attention_heads} not divisible "
+            f"by tp={tp}; Q/O sharding will be wrong. Consider a different tp."
         )
     kv_head_shardable = _gqa_can_shard_kv(num_kv_heads, tp)
     if not kv_head_shardable:
         notes.append(
             f"GQA: num_kv_heads={num_kv_heads} does not divide tp={tp}. "
-            "K/V projections will be REPLICATED over the tp axis (correct but "
-            "suboptimal). Future hypothesis: broadcast KV groups across the "
-            "Q-head partitions."
+            "K/V projections will be REPLICATED over the tp axis."
         )
 
-    # A bookkeeping bucket for the final report.
     buckets: Dict[str, list] = {
-        "col_shard": [],
-        "row_shard": [],
-        "row_shard_embed": [],
-        "kv_replicated": [],
-        "replicated": [],
+        "col_shard": [], "row_shard": [], "row_shard_embed": [],
+        "kv_replicated": [], "replicated": [],
     }
     shardings: Dict[str, NamedSharding] = {}
 
@@ -152,51 +214,44 @@ def plan_shardings(
         buckets[bucket].append(name)
 
     for name in param_names:
-        # K/V projections: shard over tp if num_kv_heads allows; else replicate.
         if any(s in name for s in ("k_proj", "v_proj")):
             if kv_head_shardable:
                 _assign(name, P(AXIS_TP, None), "col_shard")
             else:
                 _assign(name, P(None, None), "kv_replicated")
             continue
-
-        # Q + MLP input projections: columnwise (shard the output "row" dim).
-        if any(s in name for s in ("q_proj", "gate_proj", "up_proj")):
+        if any(s in name for s in _COL_SHARD_SUBSTR):
             _assign(name, P(AXIS_TP, None), "col_shard")
             continue
-
-        # Attention O + MLP down projections: rowwise (shard the input "col" dim).
         if any(s in name for s in _ROW_SHARD_SUBSTR):
             _assign(name, P(None, AXIS_TP), "row_shard")
             continue
-
-        # Embedding / LM head: shard the vocab (row) dim over tp. Vocab is
-        # 262144 on Gemma 4 — divides cleanly by tp<=8.
         if any(s in name for s in _ROW_SHARD_EMBED):
             _assign(name, P(AXIS_TP, None), "row_shard_embed")
             continue
-
-        # Everything else (norms, rotary, biases, small buffers): replicate.
         _assign(name, P(None), "replicated")
 
     return ShardingPlan(shardings=shardings, buckets=buckets, notes=notes)
 
 
 # -----------------------------------------------------------------------------
-# Convenience: take a state dict (param-name -> tensor) and apply shardings
+# Dispatch: inspect the mesh, pick the strategy.
 # -----------------------------------------------------------------------------
 
-def get_param_sharding(
-    model: Any,  # torch.nn.Module or HF config + named_parameters iterable
-    mesh: Mesh,
-) -> ShardingPlan:
-    """Build the plan off a live model's state_dict keys and its config.
 
-    Lightly-duck-typed: we just need `model.config.num_key_value_heads` /
-    `num_attention_heads` and the state_dict keys. Works on
-    `Gemma4ForCausalLM` and on `Gemma4ForConditionalGeneration` (which
-    exposes `model.config.text_config` — we fall back to that).
+def get_param_sharding(model: Any, mesh: Mesh) -> ShardingPlan:
+    """Build a ShardingPlan for a loaded HF model, picking the strategy from
+    the mesh's axis names (FSDP if the mesh carries a ``'fsdp'`` axis, TP
+    otherwise).
     """
+    state = model.state_dict()
+    names = list(state.keys())
+
+    if _is_fsdp_mesh(mesh):
+        shapes = {k: tuple(v.shape) for k, v in state.items()}
+        return plan_fsdp_shardings(names, shapes, mesh)
+
+    # TP strategy — needs head counts.
     cfg = getattr(model, "config", None)
     if cfg is None:
         raise ValueError("Model has no .config attribute; cannot infer head counts.")
@@ -208,23 +263,39 @@ def get_param_sharding(
             "Model config missing num_key_value_heads / num_attention_heads. "
             f"Got: text_cfg={text_cfg!r}"
         )
-    names = list(model.state_dict().keys())
-    return plan_shardings(
-        names, mesh, num_kv_heads=num_kv, num_attention_heads=num_q
+    return plan_tp_shardings(
+        names, mesh, num_kv_heads=num_kv, num_attention_heads=num_q,
     )
+
+
+# Back-compat alias.
+plan_shardings = plan_tp_shardings
 
 
 # -----------------------------------------------------------------------------
 # Activation-sharding helpers — called inside the compiled train step.
 # -----------------------------------------------------------------------------
 
+
 def input_sharding(mesh: Mesh) -> NamedSharding:
-    """input_ids / labels sharding: DP across batch, replicated within TP."""
+    """``input_ids`` / ``labels`` sharding: shard batch dim on the data axis.
+
+    - FSDP mesh: batch shards on ``'fsdp'`` (each chip sees batch/fsdp rows).
+    - TP mesh:  batch shards on ``'dp'``.
+    """
+    if _is_fsdp_mesh(mesh):
+        return NamedSharding(mesh, P(AXIS_FSDP, None))
     return NamedSharding(mesh, P(AXIS_DP, None))
 
 
 def logits_sharding(mesh: Mesh) -> NamedSharding:
-    """logits sharding after lm_head: DP on batch, TP on vocab."""
+    """Logits sharding after lm_head.
+
+    - FSDP mesh: batch on ``'fsdp'``, vocab replicated (GSPMD will schedule).
+    - TP mesh:  batch on ``'dp'``, vocab on ``'tp'``.
+    """
+    if _is_fsdp_mesh(mesh):
+        return NamedSharding(mesh, P(AXIS_FSDP, None, None))
     return NamedSharding(mesh, P(AXIS_DP, None, AXIS_TP))
 
 
@@ -233,13 +304,10 @@ def replicated(mesh: Mesh) -> NamedSharding:
 
 
 __all__ = [
-    "AXIS_DP",
-    "AXIS_TP",
+    "AXIS_FSDP", "AXIS_DP", "AXIS_TP",
     "ShardingPlan",
-    "get_mesh",
+    "get_mesh", "get_fsdp_mesh", "get_tp_mesh",
     "get_param_sharding",
-    "plan_shardings",
-    "input_sharding",
-    "logits_sharding",
-    "replicated",
+    "plan_fsdp_shardings", "plan_tp_shardings", "plan_shardings",
+    "input_sharding", "logits_sharding", "replicated",
 ]

@@ -43,13 +43,95 @@ Individual experiments for this program live as dated files in **this folder**: 
 
 ## How to run
 
-*Baseline command TBD — first experiment will pin this. Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary).*
+Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary). The runbook below reproduces the [2026-04-22 baseline](2026-04-22-baseline.md).
 
-Minimum requirements for the baseline:
-- torchax checkout (current wiki submodule: [torchax](../../codebases/torchax.md)).
-- HF access to the Gemma 4 E4B weights.
-- XProf capture enabled (see [xprof — capturing profiles](../../sources/2026-xprof-capturing-profiles.md)); profile dumped to `raw/profiles/<YYYY-MM-DD>-baseline/`.
-- HLO dump enabled (`XLA_FLAGS --xla_dump_to=... --xla_dump_hlo_as_text`) for later [hlo-dumping-and-diffing](../../concepts/hlo-dumping-and-diffing.md).
+### Prerequisites
+
+- A TPU v6e host (v6e-4 or v6e-8). `jax.device_count()` drives the FSDP mesh — whatever's visible is what's used.
+- [miniconda](https://docs.conda.io/en/latest/miniconda.html) installed.
+- A Hugging Face account; accept the Gemma 4 license once at [huggingface.co/google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) (Apache-2.0, not gated, but login is still required for the hub). About 15 GB of free disk for the weights cache.
+
+### One-time setup
+
+```bash
+# From the wiki repo root.
+cd /mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki
+
+# Create the env and activate it (activate it once per shell from here on).
+conda create -n gemma4_py313 python=3.13 -y
+conda activate gemma4_py313
+
+# Python deps.
+pip install -r wiki/experiments/gemma4_autoresearch_optimization/torchax/requirements.txt
+# torchax from the local submodule (matches the wiki's pinned commit).
+pip install -e raw/code/torchax
+# transformers needs accelerate for device-map handling on recent versions.
+pip install accelerate
+
+# Hugging Face auth.
+pip install -U "huggingface_hub[cli]"
+hf auth login
+```
+
+### Smoke run — reproduces the baseline
+
+```bash
+# Activate the env once per shell (skip if already active).
+conda activate gemma4_py313
+
+# Anchor the profile path at the repo root; run from the torchax folder so
+# that `python -m train` finds its sibling `model/` and `data.py` modules.
+WIKI_ROOT="/mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki"
+PROFILE_DIR="$WIKI_ROOT/raw/profiles/2026-04-23-gemma4-smoke"
+mkdir -p "$PROFILE_DIR"
+
+cd "$WIKI_ROOT/wiki/experiments/gemma4_autoresearch_optimization/torchax"
+python -m train \
+  --steps 20 \
+  --batch_size 1 \
+  --seq_len 1024 \
+  --profile_dir "$PROFILE_DIR" \
+  --profile_steps 5 6 7
+```
+
+**Expected output on v6e-4**: step 0 + step 1 each compile for ~150 s; steady-state from step 2 onward is **~134 ms/step** at seq=1024 (the [2026-04-22 baseline](2026-04-22-baseline.md) reports the full seq-length sweep). Loss descends from ~3.9 to ~2.0 over 10 steps. Profile traces for steps 5–7 land under `$PROFILE_DIR`.
+
+### Key flags
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--strategy` | `fsdp` | `fsdp` shards every param's largest divisible dim across all chips (fine-tuning default). `tp` is Megatron-style. |
+| `--fsdp` | `0` (auto = `jax.device_count()`) | Only used with `--strategy fsdp`. |
+| `--dp` / `--tp` | `1 / 1` | Only used with `--strategy tp`. |
+| `--batch_size` | `4` | Per-chip. Global = `batch_size × fsdp` (FSDP) or `× dp` (TP). |
+| `--seq_len` | `2048` | **Known issue**: NaN loss at seq≥2048 on the current scaffold; seq≤1024 is clean. See the baseline page. |
+| `--dtype` | `bf16` | `bf16` activates `torchax.enable_performance_mode()`. |
+| `--profile_dir` / `--profile_steps` | unset | Set both to capture an xprof trace for the listed steps. |
+
+### What lives where
+
+- `torchax/train.py` — the trainer (argparse + train loop, ~500 lines).
+- `torchax/model/sharding.py` — FSDP + TP sharding plans.
+- `torchax/data.py` — `wikitext-2-raw-v1` loader + fixed-length packer.
+- `torchax/run.sh` — convenience wrapper that sets `XLA_FLAGS` / `LIBTPU_INIT_ARGS` and forwards extra args.
+- [`torchax/README.md`](torchax/README.md) — per-file detail + known limitations.
+
+### Filing the experiment page
+
+After a run:
+
+1. Pick a slug: `<YYYY-MM-DD>-<short-description>.md` (e.g. `2026-04-24-splash-attention.md`).
+2. Create the file next to this README (in `wiki/experiments/gemma4_autoresearch_optimization/`) — follow the `experiment` page template in [`SCHEMA.md`](../../../SCHEMA.md). The [2026-04-22 baseline](2026-04-22-baseline.md) is the working example.
+3. **Reference the profile**: the profile dir path goes in both `## Profile` and `## Sources`. Profiles are gitignored (`raw/profiles/*` in `.gitignore`), so the experiment page is the only lineage link on disk.
+4. Append a `log.md` entry.
+
+### Known issues encountered by the scaffold (baseline run)
+
+See the "Scaffold changes applied during this run" table on [2026-04-22-baseline.md](2026-04-22-baseline.md). Short list:
+- HF checkpoint is multimodal-only — `Gemma4ForCausalLM.from_pretrained` silently re-initializes weights. Load `Gemma4ForConditionalGeneration` and monkey-patch the forward (already done in `train.py`).
+- NaN loss at seq≥2048 even with `final_logit_softcapping`; correctness work pending.
+- Step 1 recompiles (~150 s, same as step 0). Low-effort follow-up: explicit `in_shardings` on `jax.jit`.
+- OOM at batch=4, seq=2048 (attention N×N materialized, no splash).
 
 ## Code
 
@@ -112,7 +194,7 @@ Ranked candidates consolidated from Wave 1/2 findings, the [xprof-mcp TPU optimi
 
 ## History
 
-- **2026-04-22**: Program filed. Baseline not yet captured.
+- **2026-04-22**: Program filed. First baseline captured — see [2026-04-22-baseline.md](2026-04-22-baseline.md). Hardware was v6e-4 (not v6e-8 as the scaffold assumed). Steady-state at seq=2048, batch=1, FSDP=4: **249 ms/step, ~33k tokens/sec, ~26% MFU** (corrected from earlier `6PT` overestimate that claimed 44%). Loss is NaN at seq=2048 but clean at seq≤1024 — a correctness bug to fix before the first perf hypothesis lands.
 
 ---
 

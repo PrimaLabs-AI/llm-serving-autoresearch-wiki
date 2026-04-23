@@ -1,5 +1,31 @@
 # Log
 
+## [2026-04-22] experiment | Gemma 4 E4B baseline (v6e-4, FSDP)
+
+**Op**: run-experiment (baseline infrastructure check)
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/2026-04-22-baseline.md`.
+**Pages updated**: program `README.md` (History section updated with first baseline numbers); `wiki/experiments/gemma4_autoresearch_optimization/torchax/{train.py,model/sharding.py,requirements.txt}` (8 targeted fixes to get the scaffold to actually run — enumerated on the baseline page).
+**Raw artifacts**: `raw/profiles/2026-04-22-gemma4-baseline/` — xprof trace, steps 5–7 at seq=2048.
+
+**Key result**: First working run. Steady-state **249 ms/step at seq=2048, batch=1, FSDP=4 → ~33k tokens/sec, ~26% MFU** (corrected from an initial `6PT` overestimate of 44% — `P=8B` double-counts Gemma 4's Per-Layer-Embedding lookup tables, which don't participate in matmul FLOPs). Seq-length sweep: **13% MFU @ seq=512, 23% @ seq=1024, 26% @ seq=2048**. Verdict: **supported** on the infrastructure-check hypothesis; **NOT a quality-valid baseline at seq=2048** until the NaN loss is fixed.
+
+**Notes**:
+- Hardware was **v6e-4**, not the v6e-8 the scaffold README assumed. FSDP default auto-picked fsdp=4 from `jax.device_count()` — no config change needed.
+- **Default sharding strategy flipped TP=8 → FSDP** per user directive. Both paths now available; FSDP is the default. FSDP sharding rule: every ≥2D param shards on its largest dim divisible by `fsdp_size` over a 1D `'fsdp'` axis.
+- **Python 3.13.13** env (`gemma4_py313`) works with jax 0.10.0, torch 2.11.0+cpu, torchax 0.0.12 (editable install from the wiki submodule), transformers 5.7.0.dev0 (Gemma 4 only on main), datasets, optax, accelerate.
+- **8 scaffold fixes** applied to get from written-but-untested to running; all enumerated in the baseline page's "Scaffold changes applied" table. Most consequential:
+  1. `interop._jax_view` → `interop.jax_view` (pytree-map variant; single-value left torch tensors unconverted).
+  2. Load `Gemma4ForConditionalGeneration` (not `Gemma4ForCausalLM`) — HF checkpoint is multimodal-only and `ForCausalLM` silently re-inits every weight (name-prefix mismatch against `model.language_model.*`).
+  3. Monkey-patch `model.forward` with a text-only path (bypass the multimodal orchestrator's `input_ids[mask] = pad` which is not JIT-traceable).
+  4. Apply `final_logit_softcapping=30.0` in the text-only forward (did not fix the seq=2048 NaN, but is semantically required).
+  5. Requirements.txt pointed torchax at `pytorch/xla` subdirectory; actual repo is `google/torchax`. Switched to an editable install from the wiki's own submodule (commit `8f957d1`).
+- **Correctness issues found by the baseline** (flagged for the next experiment):
+  - **NaN loss at seq≥2048** — loss is clean at seq∈{512, 1024}. Likely bf16 attention overflow or a Gemma 4 hybrid-attention mask edge case. Prerequisite for any seq=2048 perf work.
+  - **OOM at batch=4, seq=2048** — attention N×N materialized (no flash/splash). Directly motivates hypothesis #1 (Splash Attention).
+  - **Step 1 recompiles** — both step 0 and step 1 take ~155 s, step 2+ hits the cache. Likely a sharding-spec / donation mismatch on step-1 inputs. Low-effort follow-up: pass explicit `in_shardings` to `jax.jit`.
+- **Arithmetic error noted publicly**: initial MFU claim of 44% was wrong — used `6PT` with `P = headline 8B` instead of `P ≈ non-embedding-matmul params`. Gemma 4's "E4B" headline includes PLE lookups which add params but no matmul FLOPs. User caught this; corrected to ~26% MFU via detailed per-matmul FLOP counting. Keep this in mind for future model-size-related FLOP estimates.
+- **Compile time dominates** for short runs: 2 × ~155 s compile vs 2.5 s of useful work at seq=2048 × 8 steady-state steps. Hypothesis #7 (scan-over-layers) should collapse this.
+
 ## [2026-04-22] scaffold | Gemma 4 E4B torchax trainer (untested)
 
 **Op**: manual (scaffold code for first execution path of an optimization program)

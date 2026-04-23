@@ -20,9 +20,12 @@ torch>=2.5,<3.0
 # exists from jax 0.8.0. Gemma 4 E4B was released 2026-04; use a recent jax.
 jax[tpu]>=0.8.0
 
-# torchax at commit 8f957d1 (== 0.0.12). Install from GitHub to match the
-# wiki's pinned submodule commit.
-torchax @ git+https://github.com/pytorch/xla.git@8f957d11128ee273a14414750b3998870f933d15#subdirectory=torchax
+# torchax — use the wiki's submodule checkout (commit 8f957d1) directly.
+# Installed out-of-band via `pip install -e ../../../../raw/code/torchax`
+# since pip doesn't resolve relative paths inside requirements.txt.
+# (Previously tried git+https URL; the repo is google/torchax, not
+# pytorch/xla — the submodule is the source of truth here.)
+# torchax
 
 # Transformers must ship Gemma 4. The config.json we inspected carries
 # `transformers_version: 5.5.0.dev0` — Gemma 4 support is on main, not on

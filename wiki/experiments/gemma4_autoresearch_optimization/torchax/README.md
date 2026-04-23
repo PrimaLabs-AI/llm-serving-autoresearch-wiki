@@ -53,44 +53,44 @@ handles that on first run, into the usual `~/.cache/huggingface/hub/`.
 
 ### Baseline smoke test
 
-```bash
-# Default: 20 steps, bf16, TP=8 across v6e-8, profile steps 5..7.
-bash run.sh
-```
-
-`run.sh` sets the XLA / LIBTPU env vars that the
-[xprof-mcp TPU optimization guide](../../../sources/2026-xprof-mcp-tpu-optimization.md)
-calls out, then forwards any extra arguments to `train.py`. Profile dumps to
-`raw/profiles/<YYYY-MM-DD-HHMMSS>-gemma4-baseline/`; HLO dumps next to it
-under `hlo/`.
-
-### Direct invocation
+`train.py` expects its sibling `model/` and `data.py` modules on `sys.path`, so run it with `python -m train` from **this folder** (`cd` first). Anchor the profile output at the repo root so all experiment artifacts land under `raw/profiles/`.
 
 ```bash
-python train.py \
-  --model_id google/gemma-4-E4B \
-  --dataset wikitext-2-raw-v1 \
-  --seq_len 2048 \
-  --batch_size 4 \
-  --steps 20 \
-  --dp 1 --tp 8 \
-  --dtype bf16 \
-  --profile_dir /tmp/gemma4-profile \
+conda activate gemma4_py313
+
+WIKI_ROOT="/mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki"
+PROFILE_DIR="$WIKI_ROOT/raw/profiles/2026-04-23-gemma4-baseline"
+mkdir -p "$PROFILE_DIR"
+
+cd "$WIKI_ROOT/wiki/experiments/gemma4_autoresearch_optimization/torchax"
+python -m train \
+  --steps 10 \
+  --batch_size 1 \
+  --seq_len 1024 \
+  --profile_dir "$PROFILE_DIR" \
   --profile_steps 5 6 7
 ```
 
-Key flags (full list: `python train.py --help`):
+Reproduces the [2026-04-22 baseline](../2026-04-22-baseline.md) at seq=1024 (clean loss; seq=2048 currently hits NaN — see the baseline page).
+
+The `run.sh` wrapper sets `XLA_FLAGS` + `LIBTPU_INIT_ARGS` and forwards extra args, but currently assumes a v6e-8 layout; prefer the explicit invocation above until `run.sh` is refreshed.
+
+### Flags
+
+Full list: `python -m train --help` (from this folder).
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--model_id` | `google/gemma-4-E4B` | HF repo. Use `google/gemma-4-E4B-it` for the instruction-tuned variant. |
+| `--model_id` | `google/gemma-4-E4B` | HF repo. |
 | `--dataset` | `wikitext-2-raw-v1` | Pass `wikitext-103-raw-v1` for a real dataset. |
-| `--seq_len` | `2048` | Model supports up to 131072 — memory permitting. |
-| `--batch_size` | `4` | Per-chip. Global = `batch_size * dp`. |
-| `--steps` | `20` | Step 0 is compile + first exec; step-time stats drop it. |
-| `--dp` / `--tp` | `1` / `8` | 2D mesh. Require `dp * tp == jax.device_count()`. |
-| `--dtype` | `bf16` | `bf16` flips torchax `enable_performance_mode()`; `fp32` flips `enable_accuracy_mode()`. |
-| `--profile_dir` + `--profile_steps` | off | Captures xprof trace for the listed step indices. |
+| `--seq_len` | `2048` | Known issue: NaN loss at seq≥2048; seq≤1024 is clean. |
+| `--batch_size` | `4` | Per-chip. Global = `batch_size × fsdp` (FSDP) or `× dp` (TP). |
+| `--steps` | `20` | Step 0 compiles; step 1 currently recompiles (known). Step-time stats drop step 0. |
+| `--strategy` | `fsdp` | `fsdp` (default) shards every param's largest divisible dim across all chips. `tp` is Megatron-style. |
+| `--fsdp` | `0` (auto = `jax.device_count()`) | FSDP mesh size; `0` means use every visible chip. Only relevant with `--strategy fsdp`. |
+| `--dp` / `--tp` | `1` / `1` | Only used with `--strategy tp`. Require `dp × tp == jax.device_count()`. |
+| `--dtype` | `bf16` | `bf16` flips `torchax.enable_performance_mode()`; `fp32` flips `enable_accuracy_mode()`. |
+| `--profile_dir` + `--profile_steps` | unset | Capture an xprof trace for the listed step indices. |
 
 ### Reporting output
 

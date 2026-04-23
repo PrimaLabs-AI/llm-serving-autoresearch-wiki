@@ -56,8 +56,10 @@ DEFAULTS = {
     "steps": 20,
     "learning_rate": 1e-5,
     "warmup_steps": 2,
+    "strategy": "fsdp",  # default: FSDP on all chips; "tp" selects Megatron-style TP
     "dp": 1,
-    "tp": 8,
+    "tp": 1,
+    "fsdp": 0,  # 0 == jax.device_count()
     "dtype": "bf16",
     "log_every": 1,
     "grad_accum": 1,
@@ -81,10 +83,18 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--steps", type=int, default=DEFAULTS["steps"])
     p.add_argument("--learning_rate", type=float, default=DEFAULTS["learning_rate"])
     p.add_argument("--warmup_steps", type=int, default=DEFAULTS["warmup_steps"])
+    p.add_argument("--strategy", choices=["fsdp", "tp"],
+                   default=DEFAULTS["strategy"],
+                   help="Sharding strategy. 'fsdp' shards every param's largest "
+                        "dim across all chips (default, best for fine-tuning). "
+                        "'tp' is Megatron-style tensor-parallel.")
+    p.add_argument("--fsdp", type=int, default=DEFAULTS["fsdp"],
+                   help="FSDP mesh size (0 = jax.device_count()). Only used "
+                        "when --strategy fsdp.")
     p.add_argument("--dp", type=int, default=DEFAULTS["dp"],
-                   help="Data-parallel mesh axis size.")
+                   help="Data-parallel mesh axis size (TP strategy only).")
     p.add_argument("--tp", type=int, default=DEFAULTS["tp"],
-                   help="Tensor-parallel mesh axis size. Default 8 (v6e-8).")
+                   help="Tensor-parallel mesh axis size (TP strategy only).")
     p.add_argument("--dtype", choices=["bf16", "fp32"], default=DEFAULTS["dtype"])
     p.add_argument("--checkpoint_dir", default=None,
                    help="If set, save torchax checkpoint at end. Skipped if unset.")
@@ -137,6 +147,23 @@ def _register_hf_pytrees():
         modeling_outputs.CausalLMOutputWithPast,
         _out_flatten, _causal_unflatten,
     )
+
+    # Gemma 4 ConditionalGeneration returns its own output class. Register
+    # it defensively — if the import path differs in future transformers
+    # versions, fail open (the pytree traversal will error visibly).
+    try:
+        from transformers.models.gemma4 import modeling_gemma4
+        for attr in ("Gemma4CausalLMOutputWithPast", "Gemma4ModelOutputWithPast"):
+            cls = getattr(modeling_gemma4, attr, None)
+            if cls is None:
+                continue
+            def _make(cls):
+                def _unflatten(aux, children):
+                    return cls(*children)
+                return _unflatten
+            register_pytree_node(cls, _out_flatten, _make(cls))
+    except Exception as e:
+        print(f"[pytree] Gemma4 output registration skipped: {e!r}")
 
     # DynamicCache — present across all recent transformers versions.
     def _dyn_flatten(c):
@@ -205,8 +232,13 @@ def main(argv: Optional[list] = None) -> int:
     torch_dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
 
     # Mesh --------------------------------------------------------------------
-    mesh = get_mesh(dp=args.dp, tp=args.tp)
-    print(f"[mesh] dp={args.dp} tp={args.tp} devices={jax.device_count()}")
+    if args.strategy == "fsdp":
+        fsdp_size = args.fsdp or jax.device_count()
+        mesh = get_mesh("fsdp", fsdp=fsdp_size)
+        print(f"[mesh] strategy=fsdp fsdp={fsdp_size} devices={jax.device_count()}")
+    else:
+        mesh = get_mesh("tp", dp=args.dp, tp=args.tp)
+        print(f"[mesh] strategy=tp dp={args.dp} tp={args.tp} devices={jax.device_count()}")
 
     # Model load --------------------------------------------------------------
     # NOTE: we load on CPU in torch_dtype, then move to 'jax'. HF requires
@@ -216,19 +248,49 @@ def main(argv: Optional[list] = None) -> int:
     print(f"[load] {args.model_id} ({torch_dtype})")
     t0 = time.perf_counter()
     env = torchax.default_env()
-    try:
-        model = Gemma4ForCausalLM.from_pretrained(
-            args.model_id, dtype=torch_dtype, device_map="cpu",
+    # The google/gemma-4-E4B HF checkpoint declares
+    # `architectures: ['Gemma4ForConditionalGeneration']` and stores weights
+    # under `model.language_model.*`. Loading straight into
+    # `Gemma4ForCausalLM` silently re-initialises ~all weights (key miss).
+    # So load ForConditionalGeneration (correct weights), then bypass the
+    # multimodal orchestrator by monkey-patching `.forward` to call the
+    # language-model backbone + lm_head directly. The multimodal forward is
+    # not JIT-friendly: it does `input_ids[mask] = pad` with a dynamic bool
+    # mask (NonConcreteBooleanIndexError under jax trace).
+    from model import Gemma4ForConditionalGeneration
+    from transformers.modeling_outputs import CausalLMOutputWithPast
+    import types
+    model = Gemma4ForConditionalGeneration.from_pretrained(
+        args.model_id, dtype=torch_dtype,
+    )
+
+    def _text_forward(self, input_ids=None, attention_mask=None, position_ids=None,
+                      past_key_values=None, inputs_embeds=None, use_cache=False,
+                      output_attentions=False, output_hidden_states=False,
+                      return_dict=True, labels=None, **kwargs):
+        lm_outputs = self.model.language_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
         )
-    except Exception as e:
-        # Multimodal fallback — the config lists the ConditionalGeneration
-        # class, which may be what the HF repo ships. See model/README.md.
-        print(f"[load] Gemma4ForCausalLM failed ({e!r}); falling back to "
-              f"Gemma4ForConditionalGeneration.")
-        from model import Gemma4ForConditionalGeneration
-        model = Gemma4ForConditionalGeneration.from_pretrained(
-            args.model_id, dtype=torch_dtype, device_map="cpu",
-        )
+        hidden = lm_outputs.last_hidden_state if hasattr(lm_outputs, "last_hidden_state") \
+                 else lm_outputs[0]
+        logits = self.lm_head(hidden)
+        # Gemma 4 applies a final_logit_softcapping in its full forward path;
+        # replicate it here so outputs match (and so bf16 logits don't blow up
+        # for longer sequences — seen as NaN loss at seq>=2048 without this).
+        sc = getattr(self.config.text_config, "final_logit_softcapping", None)
+        if sc is not None and sc > 0:
+            logits = sc * torch.tanh(logits / sc)
+        return CausalLMOutputWithPast(logits=logits)
+
+    model.forward = types.MethodType(_text_forward, model)
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
     print(f"[load] done in {time.perf_counter() - t0:.1f}s")
 
@@ -269,14 +331,23 @@ def main(argv: Optional[list] = None) -> int:
     optimizer = optax.adamw(learning_rate=lr_schedule, weight_decay=0.01)
 
     # Extract jax-side pytree of weights + init optimizer state.
-    weights = interop._jax_view(jmodel.params)  # jax-native dict
-    buffers = interop._jax_view(jmodel.buffers)
+    weights = interop.jax_view(jmodel.params)  # jax-native dict
+    buffers = interop.jax_view(jmodel.buffers)
     opt_state = optimizer.init(weights)
 
     # Data --------------------------------------------------------------------
-    print(f"[data] dataset=wikitext/{args.dataset} seq_len={args.seq_len} "
-          f"batch={args.batch_size}*dp={args.dp}")
-    global_bs = args.batch_size * args.dp
+    # For FSDP: batch is sharded across all chips, so global batch = batch_size
+    # * fsdp (each chip sees batch_size rows after sharding). For TP: batch is
+    # sharded across dp only, so global = batch_size * dp.
+    if args.strategy == "fsdp":
+        fsdp_size = args.fsdp or jax.device_count()
+        global_bs = args.batch_size * fsdp_size
+        print(f"[data] dataset=wikitext/{args.dataset} seq_len={args.seq_len} "
+              f"per_chip_batch={args.batch_size} global_batch={global_bs} (fsdp={fsdp_size})")
+    else:
+        global_bs = args.batch_size * args.dp
+        print(f"[data] dataset=wikitext/{args.dataset} seq_len={args.seq_len} "
+              f"per_chip_batch={args.batch_size} global_batch={global_bs} (dp={args.dp})")
     data_iter = make_dataloader(
         seq_len=args.seq_len,
         batch_size=global_bs,
@@ -303,7 +374,7 @@ def main(argv: Optional[list] = None) -> int:
         tw = interop.torch_view(weights)
         tb = interop.torch_view(buffers)
         tin = interop.torch_view(input_ids)
-        tlabels = interop.torch_view(labels)
+        tlabels = interop.torch_view(labels)  # (no-op if already kept)
         with torchax.default_env():
             out = jmodel.functional_call(
                 "forward", tw, tb,
@@ -325,7 +396,7 @@ def main(argv: Optional[list] = None) -> int:
                                       flat_labels)
             picked = log_probs.gather(-1, safe_labels[:, None]).squeeze(-1)
             loss = -(picked * mask).sum() / mask.sum().clamp_min(1.0)
-        return interop._jax_view(loss)
+        return interop.jax_view(loss)
 
     grad_fn = jax.value_and_grad(forward_loss)
 
@@ -358,6 +429,13 @@ def main(argv: Optional[list] = None) -> int:
     compile_time = None
     profile_active = False
 
+    # Enter the mesh so that jit sees the right sharding environment.
+    # Don't use `with` here — would force re-indenting the whole loop body.
+    if hasattr(jax.sharding, "use_mesh"):
+        _mesh_cm = jax.sharding.use_mesh(mesh)
+        _mesh_cm.__enter__()
+    else:
+        mesh.__enter__()
     t_start = time.perf_counter()
     for step in range(args.steps):
         try:
@@ -407,7 +485,7 @@ def main(argv: Optional[list] = None) -> int:
     wall = time.perf_counter() - t_start
 
     # Report ------------------------------------------------------------------
-    tokens_per_step = args.batch_size * args.dp * args.seq_len
+    tokens_per_step = global_bs * args.seq_len
     if step_times:
         mean_dt = sum(step_times) / len(step_times)
         tps = tokens_per_step / mean_dt
