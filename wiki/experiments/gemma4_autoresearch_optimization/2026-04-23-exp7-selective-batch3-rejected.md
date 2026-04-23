@@ -65,7 +65,7 @@ The pattern: **there's a batch sweet spot set by HBM pressure, not by pure amort
 
 - [program.md](program.md), [program page README](README.md).
 - [OBSERVATIONS.md § exp07](OBSERVATIONS.md).
-- [2026-04-23-exp6-selective-batch2.md](2026-04-23-exp6-selective-batch2.md) — the current-best config this experiment reverts to.
+- [2026-04-23-exp6-selective-batch2-accepted.md](2026-04-23-exp6-selective-batch2-accepted.md) — the current-best config this experiment reverts to.
 - [rematerialization concept](../../concepts/rematerialization.md).
 
 ## Sources

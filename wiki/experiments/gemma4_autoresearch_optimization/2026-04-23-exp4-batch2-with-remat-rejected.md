@@ -75,7 +75,7 @@ The chain is still **informative as a bound**: at this config, full remat + batc
 
 - [Program page](README.md), [program.md](program.md).
 - [OBSERVATIONS.md § exp04](OBSERVATIONS.md).
-- [2026-04-23-exp3-full-remat.md](2026-04-23-exp3-full-remat.md) — its code change carries into this experiment.
+- [2026-04-23-exp3-full-remat-accepted.md](2026-04-23-exp3-full-remat-accepted.md) — its code change carries into this experiment.
 - [rematerialization](../../concepts/rematerialization.md), [fsdp](../../concepts/fsdp.md), [all-gather](../../concepts/all-gather.md).
 - [xprof-mcp TPU optimization guide §4.6/§5](../../sources/2026-xprof-mcp-tpu-optimization.md).
 

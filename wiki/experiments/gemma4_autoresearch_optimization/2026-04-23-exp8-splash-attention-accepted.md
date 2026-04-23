@@ -20,7 +20,7 @@ Origin: program.md's "Pallas kernel landscape" section, first entry; exp 8 is th
 
 ## Setup
 
-- Config same as [exp 6](2026-04-23-exp6-selective-batch2.md): `--batch_size 2 --seq_len 1024`, selective remat (`checkpoint_dots_with_no_batch_dims`) retained.
+- Config same as [exp 6](2026-04-23-exp6-selective-batch2-accepted.md): `--batch_size 2 --seq_len 1024`, selective remat (`checkpoint_dots_with_no_batch_dims`) retained.
 - Code changes:
   - Added new file `torchax/model/pallas_attention.py` (~250 lines) with `splash_attention_fn` matching HF's `ALL_ATTENTION_FUNCTIONS` signature; wraps `jax.experimental.pallas.ops.tpu.splash_attention_kernel` inside `jax.shard_map(mesh=mesh, in_specs=P('fsdp',…), out_specs=P('fsdp',…), check_vma=False)` called via `torchax.interop.call_jax`.
   - Handles causal (full-attention) and sliding-window (sliding_window=512) layers via `splash_attention_mask.CausalMask` and `LocalMask(window_size=(W, 0))` respectively.
@@ -97,7 +97,7 @@ At seq=1024 this is a marginal win because:
 
 - [program.md § Pallas kernel landscape](program.md) — the design doc that motivated this experiment.
 - [OBSERVATIONS.md § exp08](OBSERVATIONS.md).
-- [2026-04-23-exp6-selective-batch2.md](2026-04-23-exp6-selective-batch2.md) — the baseline this builds on.
+- [2026-04-23-exp6-selective-batch2-accepted.md](2026-04-23-exp6-selective-batch2-accepted.md) — the baseline this builds on.
 - [splash-attention concept](../../concepts/splash-attention.md), [pallas-kernel](../../concepts/pallas-kernel.md), [attention-block-sizes](../../concepts/attention-block-sizes.md).
 - [tokamax splash-attention source](../../sources/2026-tokamax-splash-attention.md).
 - [torchax codebase](../../codebases/torchax.md) (`interop.call_jax`).

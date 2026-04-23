@@ -74,7 +74,7 @@ The −18 ms on `custom fusion` is an unexpected minor improvement — likely be
 
 **Supported as a memory-win prep.** +8.7 % step-time is inside the predicted range; −35 % peak HBM and 11.9 GiB free memory unlocks batch growth. The selective policy is **strictly better** than full remat on every metric except raw step time (where it's still only mildly worse than baseline). Loss trajectory identical. Kept in the main `train.py` going forward.
 
-Final judgment requires the paired state-growing experiment ([exp 6 — batch=2](2026-04-23-exp6-selective-batch2.md)), which IS where the TPS win materialized (+1.2 % over baseline).
+Final judgment requires the paired state-growing experiment ([exp 6 — batch=2](2026-04-23-exp6-selective-batch2-accepted.md)), which IS where the TPS win materialized (+1.2 % over baseline).
 
 ## Next hypotheses (followed up in exp 6+)
 
@@ -86,8 +86,8 @@ Final judgment requires the paired state-growing experiment ([exp 6 — batch=2]
 
 - [program.md](program.md), [program page README](README.md).
 - [OBSERVATIONS.md § exp05](OBSERVATIONS.md#exp05--selective-remat-checkpoint_dots_with_no_batch_dims--keep-memory-first-prep-low-tax).
-- [2026-04-23-exp3-full-remat.md](2026-04-23-exp3-full-remat.md) — the comparison point.
-- [2026-04-23-exp6-selective-batch2.md](2026-04-23-exp6-selective-batch2.md) — the paid-off follow-up.
+- [2026-04-23-exp3-full-remat-accepted.md](2026-04-23-exp3-full-remat-accepted.md) — the comparison point.
+- [2026-04-23-exp6-selective-batch2-accepted.md](2026-04-23-exp6-selective-batch2-accepted.md) — the paid-off follow-up.
 - [rematerialization concept](../../concepts/rematerialization.md).
 
 ## Sources

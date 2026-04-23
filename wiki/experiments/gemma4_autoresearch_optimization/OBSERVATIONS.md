@@ -23,7 +23,7 @@ See [2026-04-22-baseline.md](2026-04-22-baseline.md) for the full page.
 
 ### exp01 — async-collective XLA flag bundle — `discard`
 
-Canonical page: [2026-04-23-exp1-async-collective-flags.md](2026-04-23-exp1-async-collective-flags.md).
+Canonical page: [2026-04-23-exp1-async-collective-flags-rejected.md](2026-04-23-exp1-async-collective-flags-rejected.md).
 
 **Config**:
 - Baseline config + `LIBTPU_INIT_ARGS="--xla_tpu_scoped_vmem_limit_kib=131072 --xla_tpu_enable_latency_hiding_scheduler=true --xla_tpu_enable_async_collective_fusion=true --xla_tpu_enable_async_collective_fusion_fuse_all_gather=true --xla_tpu_enable_async_collective_fusion_multiple_steps=true"`
@@ -61,7 +61,7 @@ The stock XLA scheduler had already found a compute-order-friendly schedule for 
 
 ### exp03 — full activation remat via `jax.checkpoint` — `keep` (memory-first prep)
 
-Canonical page: [2026-04-23-exp3-full-remat.md](2026-04-23-exp3-full-remat.md).
+Canonical page: [2026-04-23-exp3-full-remat-accepted.md](2026-04-23-exp3-full-remat-accepted.md).
 
 **Config**:
 - Code diff: `grad_fn = jax.value_and_grad(forward_loss)` → `grad_fn = jax.value_and_grad(jax.checkpoint(forward_loss))`. One line.
@@ -190,7 +190,7 @@ The surprising result is that selective saved MORE memory than full. Hypothesis:
 
 ### exp04 — double batch under full remat — `discard` (chain net −9 % TPS)
 
-Canonical page: [2026-04-23-exp4-batch2-with-remat.md](2026-04-23-exp4-batch2-with-remat.md).
+Canonical page: [2026-04-23-exp4-batch2-with-remat-rejected.md](2026-04-23-exp4-batch2-with-remat-rejected.md).
 
 **Config**:
 - Code unchanged from exp 3 (`jax.checkpoint(forward_loss)`).

@@ -26,7 +26,7 @@
 - `wiki/experiments/gemma4_autoresearch_optimization/program.md` — the agent-facing protocol for this program, adapted from the sibling-wiki TorchTitan autoresearch template but specialized to Gemma 4 E4B / torchax / v6e-4.
 - `wiki/experiments/gemma4_autoresearch_optimization/RESULTS.tsv` — tab-separated ledger (gitignored via `wiki/experiments/*/RESULTS.tsv`).
 - `wiki/experiments/gemma4_autoresearch_optimization/OBSERVATIONS.md` — skim-and-reason aggregation log; backfilled with baseline + exp1 + exp2 blocks.
-- `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp2-pin-out-shardings.md` — Exp 2 experiment page (crashed/invalid, reverted).
+- `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp2-pin-out-shardings-rejected.md` — Exp 2 experiment page (crashed/invalid, reverted).
 
 **Pages updated**:
 - Program `README.md` — stripped the in-README "Optimization loop procedure" section; replaced with a short "How to start the optimization loop" pointer to `program.md`. History extended for exp2 + the protocol formalization.
@@ -43,7 +43,7 @@
 ## [2026-04-23] experiment | Gemma 4 E4B — Exp 1: async-collective XLA flags (REFUTED)
 
 **Op**: run-experiment (first optimization-loop cycle on the Gemma 4 program).
-**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp1-async-collective-flags.md`.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp1-async-collective-flags-rejected.md`.
 **Pages updated**: program `README.md` history (baseline-seq-1024 + Exp 1).
 **Raw artifacts**: `raw/profiles/2026-04-23-gemma4-loss-confirm/` (20-step seq=1024 baseline, clean loss), `raw/profiles/2026-04-23-gemma4-exp1-async-collectives/` (exp1 trace). Both symlinked into the live xprof instance as `gemma4_baseline_seq1024_20260423` and `gemma4_exp1_async_collectives_20260423`.
 

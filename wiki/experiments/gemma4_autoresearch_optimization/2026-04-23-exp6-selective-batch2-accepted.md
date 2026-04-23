@@ -18,7 +18,7 @@ verdict: supported
 
 ## Setup
 
-- Code unchanged from [exp 5](2026-04-23-exp5-selective-remat.md): `jax.checkpoint(forward_loss, policy=checkpoint_dots_with_no_batch_dims)`.
+- Code unchanged from [exp 5](2026-04-23-exp5-selective-remat-accepted.md): `jax.checkpoint(forward_loss, policy=checkpoint_dots_with_no_batch_dims)`.
 - Config change: `--batch_size 1` → `--batch_size 2`. Global batch 4 → 8 (fsdp=4, per-chip=2). Tokens/step 4096 → 8192.
 - Command: `python -m train --steps 20 --batch_size 2 --seq_len 1024 ...`.
 
@@ -64,8 +64,8 @@ Memory: stack reservation 7.0 → 13.6 GiB (+6.6 GiB added activation footprint 
 
 - [program.md](program.md), [program page README](README.md).
 - [OBSERVATIONS.md § exp06](OBSERVATIONS.md).
-- [2026-04-23-exp5-selective-remat.md](2026-04-23-exp5-selective-remat.md) — the code change this experiment builds on.
-- [2026-04-23-exp7-selective-batch3.md](2026-04-23-exp7-selective-batch3.md) — the follow-up that established batch=2 as the sweet spot.
+- [2026-04-23-exp5-selective-remat-accepted.md](2026-04-23-exp5-selective-remat-accepted.md) — the code change this experiment builds on.
+- [2026-04-23-exp7-selective-batch3-rejected.md](2026-04-23-exp7-selective-batch3-rejected.md) — the follow-up that established batch=2 as the sweet spot.
 - [rematerialization](../../concepts/rematerialization.md), [fsdp](../../concepts/fsdp.md).
 
 ## Sources

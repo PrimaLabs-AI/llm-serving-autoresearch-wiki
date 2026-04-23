@@ -19,7 +19,8 @@ Single-environment program (no `program-<env>.md` split yet). These are the fact
 | Profile directory | `raw/profiles/<YYYY-MM-DD>-<slug>/` under the wiki repo root. **Gitignored.** |
 | HLO dump directory | `raw/profiles/<YYYY-MM-DD>-<slug>/hlo/` (colocated). |
 | xprof_mcp server | Already running on this host (pid 369567) with `--logdir=/mnt/disks/persist/torch-tpu/dump_folder/profiles --port=8791`. To make a captured profile queryable, symlink the session dir into `/mnt/disks/persist/torch-tpu/dump_folder/profiles/plugins/profile/<descriptive_name>`. Then `mcp__xprof__list_runs` will show it. |
-| Experiment page slug | `<YYYY-MM-DD>-exp<NN>-<short-slug>.md` in this folder. The original baseline `<YYYY-MM-DD>-baseline.md` is experiment 0. |
+| Experiment page slug | `<YYYY-MM-DD>-exp<NN>-<short-slug>-<verdict-suffix>.md` in this folder, where `<verdict-suffix>` ∈ { `accepted`, `rejected`, `potential` } per the rule below. The original baseline `<YYYY-MM-DD>-baseline.md` has no verdict suffix (it is the reference, not a hypothesis test). |
+| Experiment verdict suffix | **Rule**: once an experiment's verdict is final, the page filename MUST end with one of three suffixes before `.md`, reflecting the `RESULTS.tsv` status. `-accepted` for `keep` / `supported` (hypothesis confirmed and useful). `-rejected` for `discard` / `refuted` / `crash` / `invalid` (hypothesis disconfirmed or unusable). `-potential` for `parked` / `inconclusive` (hypothesis not settled — revisit when conditions change). The suffix is part of the filename at file-creation time; rename on status change. This makes directory listings of `wiki/experiments/<program>/` self-summarizing. |
 | Timeout per experiment | **15 minutes** wall-clock. Kill and mark `crash` otherwise. |
 
 ## Model constraints (architecture — off-limits)
@@ -171,7 +172,7 @@ exp_id	date	tps	mfu_percent	step_time_ms	peak_hbm_gib	config	status	description
 
 ## Observations log — `OBSERVATIONS.md`
 
-One section per experiment. **The experiment page** (`<YYYY-MM-DD>-exp<NN>-<slug>.md`) remains the canonical per-experiment file per `SCHEMA.md`; `OBSERVATIONS.md` is a **skim-and-reason** aggregation log for the human reviewer to quickly thread through the session's arc.
+One section per experiment. **The experiment page** (`<YYYY-MM-DD>-exp<NN>-<slug>-<verdict-suffix>.md` — see "Experiment verdict suffix" rule in the Fixed bindings table) remains the canonical per-experiment file per `SCHEMA.md`; `OBSERVATIONS.md` is a **skim-and-reason** aggregation log for the human reviewer to quickly thread through the session's arc.
 
 Template per block (append-only, commit alongside code):
 
@@ -182,7 +183,7 @@ Template per block (append-only, commit alongside code):
 - Command diff from prior keep: <flag diffs + code change summary>
 - Profile path: `raw/profiles/<YYYY-MM-DD>-<slug>/`
 - HLO dump path: `raw/profiles/<YYYY-MM-DD>-<slug>/hlo/`
-- Experiment page: `<YYYY-MM-DD>-exp<NN>-<slug>.md`
+- Experiment page: `<YYYY-MM-DD>-exp<NN>-<slug>-<verdict-suffix>.md` (accepted/rejected/potential — see Fixed bindings)
 
 **Hypothesis**:
 <2–4 sentences; what you expect and why. Cite profile signal / wiki page / prior follow-up.>
@@ -257,7 +258,7 @@ LOOP FOREVER:
 
    **Memory-ceiling rule** (applies here — 95% HBM on baseline): memory-saving change must come before any state-growing change.
 
-3. **Implement** the hypothesis. One experiment = one `<YYYY-MM-DD>-exp<NN>-<slug>.md` page + code changes to `torchax/` + a `RESULTS.tsv` row + an `OBSERVATIONS.md` block.
+3. **Implement** the hypothesis. One experiment = one `<YYYY-MM-DD>-exp<NN>-<slug>-<verdict-suffix>.md` page + code changes to `torchax/` + a `RESULTS.tsv` row + an `OBSERVATIONS.md` block.
 4. **Run** the baseline command with the hypothesis-adjusted config / env:
    ```bash
    cd wiki/experiments/gemma4_autoresearch_optimization/torchax
