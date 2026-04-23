@@ -153,35 +153,75 @@ def _jax_splash_fwd(q, k, v, seq_len: int, num_q_heads: int,
     """JAX-side forward. q,k,v already in JAX-land with leading batch axis.
 
     Wrapped in `jax.shard_map` so the Mosaic custom-call sees per-chip local
-    tensors (batch B/fsdp) rather than a globally-sharded array — JAX refuses
-    to auto-partition Mosaic kernels. All four tensors (Q, K, V, out) are
-    batch-sharded on the `'fsdp'` axis; heads / seq / head_dim are replicated.
+    tensors rather than a globally-sharded array — JAX refuses to
+    auto-partition Mosaic kernels.
+
+    Supports two mesh shapes:
+
+    * 1D FSDP mesh (``('fsdp',)``) — Q/K/V/out batch-sharded on ``'fsdp'``;
+      heads / seq / head_dim replicated. Each chip rebuilds the kernel with
+      the full ``num_q_heads`` and runs vmap over its local batch slice.
+    * 2D TP mesh (``('dp', 'tp')``) — Q/K/V/out batch-sharded on ``'dp'`` AND
+      head-sharded on ``'tp'``. Each chip sees ``num_q_heads // tp`` Q-heads
+      and ``num_kv_heads // tp`` KV-heads (exp 32: for Gemma 4 E4B at tp=2
+      that's 4 Q-heads and 1 KV-head per chip). The splash kernel is
+      rebuilt per-chip with the *local* head count because the
+      ``MultiHeadMask`` is a tuple of length ``num_q_heads`` and the
+      kernel's internal GQA reshape keys off this count.
     """
     import jax
     from jax.sharding import PartitionSpec as P
 
-    kernel = _build_splash_kernel(seq_len, num_q_heads, sliding_window)
-
     # Per-chip body: vmap over the (per-chip) batch axis. segment_ids=None
     # because training packs a single document per row; the causal/local mask
-    # carries all the structure.
-    def _inner(qj, kj, vj):
-        return jax.vmap(kernel, in_axes=(0, 0, 0))(qj, kj, vj)
+    # carries all the structure. The kernel is resolved *inside* so we can
+    # specialize it to the per-chip head count under shard_map.
+    def _make_inner(num_q_heads_local: int):
+        kernel = _build_splash_kernel(seq_len, num_q_heads_local, sliding_window)
+        def _inner(qj, kj, vj):
+            return jax.vmap(kernel, in_axes=(0, 0, 0))(qj, kj, vj)
+        return _inner
 
     if _MESH is None:
         # No mesh registered — caller didn't go through register_splash_attention(mesh).
         # Fall back to plain vmap (single-device runs, unit tests).
-        return _inner(q, k, v)
+        return _make_inner(num_q_heads)(q, k, v)
 
-    in_specs = (
-        P("fsdp", None, None, None),   # Q: [B, H, S, D]
-        P("fsdp", None, None, None),   # K: [B, Hkv, S, D]
-        P("fsdp", None, None, None),   # V: [B, Hkv, S, D]
-    )
-    out_specs = P("fsdp", None, None, None)  # [B, H, S, D]
+    axis_names = tuple(_MESH.axis_names)
+
+    if "fsdp" in axis_names:
+        # 1D FSDP mesh — original behavior.
+        in_specs = (
+            P("fsdp", None, None, None),   # Q: [B, H, S, D]
+            P("fsdp", None, None, None),   # K: [B, Hkv, S, D]
+            P("fsdp", None, None, None),   # V: [B, Hkv, S, D]
+        )
+        out_specs = P("fsdp", None, None, None)
+        inner = _make_inner(num_q_heads)
+    elif "dp" in axis_names and "tp" in axis_names:
+        # 2D TP mesh — shard heads on tp axis, batch on dp axis.
+        tp_size = _MESH.shape["tp"]
+        if num_q_heads % tp_size != 0:
+            raise ValueError(
+                f"splash 2D shard_map: num_q_heads={num_q_heads} not divisible "
+                f"by tp={tp_size}. Expected num_q_heads % tp == 0 for head-sharded TP."
+            )
+        num_q_heads_local = num_q_heads // tp_size
+        in_specs = (
+            P("dp", "tp", None, None),   # Q: [B, H, S, D] -> [B/dp, H/tp, S, D] per chip
+            P("dp", "tp", None, None),   # K: [B, Hkv, S, D]
+            P("dp", "tp", None, None),   # V: [B, Hkv, S, D]
+        )
+        out_specs = P("dp", "tp", None, None)
+        inner = _make_inner(num_q_heads_local)
+    else:
+        raise ValueError(
+            f"splash shard_map: unsupported mesh axes {axis_names!r}; "
+            "expected ('fsdp',) or ('dp','tp')."
+        )
 
     sharded_inner = jax.shard_map(
-        _inner,
+        inner,
         mesh=_MESH,
         in_specs=in_specs,
         out_specs=out_specs,
@@ -304,11 +344,13 @@ def register_splash_attention(mesh: "Any") -> str:
     """Register `splash_attention_fn` under ALL_ATTENTION_FUNCTIONS.
 
     Args:
-        mesh: the active ``jax.sharding.Mesh`` (must carry an ``'fsdp'`` axis).
-            Stashed in a module global so the per-layer attention call can
-            wrap the Pallas kernel in ``jax.shard_map``. Required — Mosaic
-            custom-calls cannot be auto-partitioned, so we must shard_map
-            them with a concrete mesh.
+        mesh: the active ``jax.sharding.Mesh``. Must carry either an
+            ``'fsdp'`` axis (1D FSDP mesh) or both ``'dp'`` and ``'tp'``
+            axes (2D tensor-parallel mesh, exp 32+). Stashed in a module
+            global so the per-layer attention call can wrap the Pallas
+            kernel in ``jax.shard_map``. Required — Mosaic custom-calls
+            cannot be auto-partitioned, so we must shard_map them with a
+            concrete mesh.
 
     Returns:
         The implementation key to set on ``config._attn_implementation``.

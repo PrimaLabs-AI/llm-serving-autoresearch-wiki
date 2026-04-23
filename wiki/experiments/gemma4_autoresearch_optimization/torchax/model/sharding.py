@@ -186,9 +186,24 @@ def plan_tp_shardings(
     *,
     num_kv_heads: int,
     num_attention_heads: int,
+    param_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
 ) -> ShardingPlan:
-    """NeMo-Megatron TP recipe adapted for GQA."""
+    """NeMo-Megatron TP recipe adapted for GQA.
+
+    When ``param_shapes`` is given, rank-0 / rank-1 params that happen to
+    match a TP substring (e.g., a per-layer scalar named like a proj) are
+    skipped and fall through to the replicated bucket — splitting a rank-<2
+    tensor on a 2D ``P(axis, None)`` spec is a JAX error (exp 32 hit this
+    before ``param_shapes`` was threaded through).
+
+    For 2D (dp, tp) meshes (exp 32+), params that do NOT match a TP
+    substring are dp-sharded FSDP-style on the largest dim divisible by dp
+    when shapes are available. This is a one-sided hybrid — TP where the
+    NeMo-Megatron recipe applies, FSDP-like sharding for everything else,
+    so opt-state per chip still shrinks on the dp axis.
+    """
     tp = mesh.shape[AXIS_TP]
+    dp_size = mesh.shape.get(AXIS_DP, 1) if AXIS_DP in mesh.axis_names else 1
 
     notes: list = []
     if num_attention_heads % tp != 0:
@@ -205,7 +220,7 @@ def plan_tp_shardings(
 
     buckets: Dict[str, list] = {
         "col_shard": [], "row_shard": [], "row_shard_embed": [],
-        "kv_replicated": [], "replicated": [],
+        "kv_replicated": [], "replicated": [], "dp_shard": [], "undivisible": [],
     }
     shardings: Dict[str, NamedSharding] = {}
 
@@ -213,23 +228,91 @@ def plan_tp_shardings(
         shardings[name] = NamedSharding(mesh, spec)
         buckets[bucket].append(name)
 
+    def _rank(name: str) -> int:
+        if param_shapes is None:
+            return 2  # assume 2D (original behavior)
+        shape = param_shapes.get(name)
+        return 0 if shape is None else len(shape)
+
+    def _fallback(name: str) -> None:
+        """Replicate over tp; dp-shard FSDP-style if 2D mesh and divisible."""
+        shape = param_shapes.get(name) if param_shapes else None
+        if shape is None or len(shape) == 0 or dp_size == 1:
+            _assign(name, P(), "replicated")
+            return
+        # Find largest dim divisible by dp.
+        ordered = sorted(range(len(shape)), key=lambda i: -shape[i])
+        shard_dim: Optional[int] = None
+        for d in ordered:
+            if shape[d] % dp_size == 0:
+                shard_dim = d
+                break
+        if shard_dim is None:
+            _assign(name, P(), "undivisible")
+            return
+        # Replicate over all dims except shard_dim which takes dp.
+        spec_axes = [None] * len(shape)
+        spec_axes[shard_dim] = AXIS_DP
+        _assign(name, P(*spec_axes), "dp_shard")
+
+    # For 2D (dp, tp) meshes: also shard the OTHER dim of TP-matched weights
+    # on the dp axis so opt-state is 2-way × 2-way = 4-way sharded per chip,
+    # matching what 1D fsdp=4 gave. Without this, tp-only sharding keeps
+    # opt-state 2x larger per chip than 1D fsdp and compile-time OOMs.
+    use_hybrid_2d = dp_size > 1 and AXIS_DP in mesh.axis_names
+
+    def _shape_div(name: str, axis_idx: int, divisor: int) -> bool:
+        if param_shapes is None:
+            return True  # optimistic
+        shape = param_shapes.get(name)
+        if shape is None or axis_idx >= len(shape):
+            return False
+        return shape[axis_idx] % divisor == 0
+
     for name in param_names:
-        if any(s in name for s in ("k_proj", "v_proj")):
+        rank = _rank(name)
+        if any(s in name for s in ("k_proj", "v_proj")) and rank >= 2:
             if kv_head_shardable:
-                _assign(name, P(AXIS_TP, None), "col_shard")
+                # col-shard: out_dim on tp. Also dp-shard in_dim if possible.
+                if use_hybrid_2d and _shape_div(name, 1, dp_size):
+                    _assign(name, P(AXIS_TP, AXIS_DP), "col_shard")
+                else:
+                    _assign(name, P(AXIS_TP, None), "col_shard")
             else:
-                _assign(name, P(None, None), "kv_replicated")
+                # Can't TP-shard kv; dp-shard via fallback.
+                _fallback(name)
             continue
-        if any(s in name for s in _COL_SHARD_SUBSTR):
-            _assign(name, P(AXIS_TP, None), "col_shard")
+        if any(s in name for s in _COL_SHARD_SUBSTR) and rank >= 2:
+            if use_hybrid_2d and _shape_div(name, 1, dp_size):
+                _assign(name, P(AXIS_TP, AXIS_DP), "col_shard")
+            else:
+                _assign(name, P(AXIS_TP, None), "col_shard")
             continue
-        if any(s in name for s in _ROW_SHARD_SUBSTR):
-            _assign(name, P(None, AXIS_TP), "row_shard")
+        if any(s in name for s in _ROW_SHARD_SUBSTR) and rank >= 2:
+            if use_hybrid_2d and _shape_div(name, 0, dp_size):
+                _assign(name, P(AXIS_DP, AXIS_TP), "row_shard")
+            else:
+                _assign(name, P(None, AXIS_TP), "row_shard")
             continue
-        if any(s in name for s in _ROW_SHARD_EMBED):
-            _assign(name, P(AXIS_TP, None), "row_shard_embed")
+        if any(s in name for s in _ROW_SHARD_EMBED) and rank >= 2:
+            if use_hybrid_2d and _shape_div(name, 1, dp_size):
+                _assign(name, P(AXIS_TP, AXIS_DP), "row_shard_embed")
+            else:
+                _assign(name, P(AXIS_TP, None), "row_shard_embed")
             continue
-        _assign(name, P(None), "replicated")
+        _fallback(name)
+
+    if buckets["undivisible"]:
+        notes.append(
+            f"TP-mesh fallback: {len(buckets['undivisible'])} non-TP param(s) "
+            f"could not be dp-sharded on dp={dp_size}; replicated. "
+            f"Example: {buckets['undivisible'][:3]}"
+        )
+    if dp_size > 1 and buckets["dp_shard"]:
+        notes.append(
+            f"TP-mesh hybrid: dp-sharded {len(buckets['dp_shard'])} non-TP "
+            f"param(s) FSDP-style on dp={dp_size}."
+        )
 
     return ShardingPlan(shardings=shardings, buckets=buckets, notes=notes)
 
@@ -263,8 +346,10 @@ def get_param_sharding(model: Any, mesh: Mesh) -> ShardingPlan:
             "Model config missing num_key_value_heads / num_attention_heads. "
             f"Got: text_cfg={text_cfg!r}"
         )
+    shapes = {k: tuple(v.shape) for k, v in state.items()}
     return plan_tp_shardings(
         names, mesh, num_kv_heads=num_kv, num_attention_heads=num_q,
+        param_shapes=shapes,
     )
 
 
