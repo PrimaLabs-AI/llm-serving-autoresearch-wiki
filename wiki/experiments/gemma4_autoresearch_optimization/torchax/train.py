@@ -299,14 +299,24 @@ def main(argv: Optional[list] = None) -> int:
     # `_attn_implementation` on every Gemma4Text layer's `self.config`
     # (shared across layers). Handles causal + sliding-window-512 via
     # splash mask builders; GQA 4:1 is native. See model/pallas_attention.py.
-    from model.pallas_attention import register_splash_attention  # noqa: E402
-    impl_key = register_splash_attention(mesh)
+    #
+    # Exp 27 — optionally route through tokamax.dot_product_attention
+    # (same splash kernel, but with use_base2_exp=True in softmax).
+    # Select via env: ATTENTION_IMPL=tokamax or splash (default).
+    attn_choice = os.environ.get("ATTENTION_IMPL", "splash").lower()
+    if attn_choice == "tokamax":
+        from model.pallas_attention import register_tokamax_attention  # noqa: E402
+        impl_key = register_tokamax_attention(mesh)
+        print("[attention] using tokamax_pallas (mosaic_tpu, use_base2_exp=True)")
+    else:
+        from model.pallas_attention import register_splash_attention  # noqa: E402
+        impl_key = register_splash_attention(mesh)
+        print(f"[attention] using splash_pallas Pallas kernel")
     # Gemma4Config is a composite: the real attn-impl flag lives on the text
     # sub-config used by Gemma4TextAttention. Set both defensively.
     if hasattr(model.config, "text_config"):
         model.config.text_config._attn_implementation = impl_key
     model.config._attn_implementation = impl_key
-    print(f"[attention] using splash_pallas Pallas kernel")
 
     # Build sharding plan off the torch-side state dict keys --------------
     plan = get_param_sharding(model, mesh)

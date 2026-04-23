@@ -298,6 +298,7 @@ def splash_attention_fn(
 # ---------------------------------------------------------------------------
 
 ATTN_IMPL_NAME = "splash_pallas"
+TOKAMAX_ATTN_IMPL_NAME = "tokamax_pallas"
 
 
 def register_splash_attention(mesh: "Any") -> str:
@@ -318,3 +319,120 @@ def register_splash_attention(mesh: "Any") -> str:
     from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
     ALL_ATTENTION_FUNCTIONS[ATTN_IMPL_NAME] = splash_attention_fn
     return ATTN_IMPL_NAME
+
+
+# ---------------------------------------------------------------------------
+# Exp 27 — tokamax.dot_product_attention (mosaic_tpu) path
+# ---------------------------------------------------------------------------
+#
+# Same underlying splash_attention_kernel, but routed through tokamax's
+# high-level API. Tokamax's mosaic_tpu config sets `use_base2_exp=True` by
+# default (natural-exp softmax -> base-2-exp, with a log2(e) rescale of Q).
+# v6e has hardware exp2; this should shave a small fraction of attention
+# time versus our direct `make_splash_mha_single_device` path.
+#
+# Also: tokamax handles the `shard_map` wrap internally when `q_sharding` is
+# provided, so we don't need our own. Layout diff from splash_attention_fn:
+# tokamax expects `[B, S, N, D]`, HF hands us `[B, N, S, D]` — transpose on
+# the torch side before call_jax.
+
+def tokamax_attention_fn(
+    module: torch.nn.Module,
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor | None,
+    dropout: float = 0.0,
+    scaling: float | None = None,
+    sliding_window: int | None = None,
+    **kwargs: Any,
+) -> tuple[torch.Tensor, None]:
+    """Drop-in replacement for SDPA in Gemma 4, routed via tokamax DPA.
+
+    Inputs (torch tensors in torchax-land):
+        query_states: [B, num_q_heads=8, S, head_dim=256]
+        key_states:   [B, num_kv_heads=2, S, head_dim=256]
+        value_states: [B, num_kv_heads=2, S, head_dim=256]
+
+    Returns:
+        attn_output: [B, S, num_q_heads, head_dim] (what HF expects post-
+                     transpose — tokamax's native output layout).
+        attn_weights: None.
+    """
+    from torchax import interop
+
+    if dropout != 0.0:
+        raise NotImplementedError(
+            f"tokamax_attention_fn does not support dropout > 0 (got {dropout})."
+        )
+
+    _ = attention_mask  # same reasoning as splash path; see above.
+
+    if scaling is None:
+        scaling = float(module.head_dim) ** -0.5
+
+    # Transpose to tokamax's expected [B, S, N, D] layout (HF hands us
+    # [B, N, S, D]).
+    q = query_states.transpose(1, 2).contiguous()
+    k = key_states.transpose(1, 2).contiguous()
+    v = value_states.transpose(1, 2).contiguous()
+
+    local_window = (int(sliding_window), 0) if sliding_window and sliding_window > 0 else None
+
+    def _jax_fn(qj, kj, vj):
+        import tokamax
+        from jax.sharding import NamedSharding, PartitionSpec as P
+        q_sharding = (
+            NamedSharding(_MESH, P("fsdp", None, None, None))
+            if _MESH is not None else None
+        )
+        try:
+            return tokamax.dot_product_attention(
+                qj, kj, vj,
+                scale=scaling,
+                is_causal=True,
+                local_window_size=local_window,
+                implementation="mosaic",
+                q_sharding=q_sharding,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            print(f"[tokamax_pallas] fallback to XLA: {type(e).__name__}: {e}")
+            # XLA fallback expects [B, N, S, D] layout — transpose back.
+            qj_nsd = qj.transpose(0, 2, 1, 3)
+            kj_nsd = kj.transpose(0, 2, 1, 3)
+            vj_nsd = vj.transpose(0, 2, 1, 3)
+            out_nsd = _xla_fallback_fwd(qj_nsd, kj_nsd, vj_nsd, 1.0, sliding_window)
+            return out_nsd.transpose(0, 2, 1, 3)
+
+    # call_jax: torch_view <- jax_fn(jax_view(...))
+    out = interop.call_jax(_jax_fn, q, k, v)
+    # out shape is [B, S, num_q_heads, head_dim] — already HF's expected
+    # layout (matches splash path after its transpose(1, 2)).
+    return out, None
+
+
+def register_tokamax_attention(mesh: "Any") -> str:
+    """Register `tokamax_attention_fn` under ALL_ATTENTION_FUNCTIONS.
+
+    Args:
+        mesh: the active ``jax.sharding.Mesh`` (must carry an ``'fsdp'`` axis).
+
+    Returns:
+        The implementation key to set on ``config._attn_implementation``.
+    """
+    global _MESH
+    _MESH = mesh
+    # Pre-parse absl flags. tokamax._src.config lazily calls
+    # `flags.FLAGS(sys.argv)` on first config access inside
+    # tokamax.dot_product_attention, which blows up with
+    # `UnrecognizedFlagError: Unknown command line flag 'steps'` when
+    # train.py was invoked with argparse-style flags absl doesn't know.
+    # Parsing with argv[:1] initializes absl's flag state without consuming
+    # our CLI flags.
+    import sys as _sys
+    from absl import flags as _abslflags
+    if not _abslflags.FLAGS.is_parsed():
+        _abslflags.FLAGS(_sys.argv[:1])
+    from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+    ALL_ATTENTION_FUNCTIONS[TOKAMAX_ATTN_IMPL_NAME] = tokamax_attention_fn
+    return TOKAMAX_ATTN_IMPL_NAME
