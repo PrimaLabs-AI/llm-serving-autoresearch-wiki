@@ -30,7 +30,7 @@ Canonical page: [2026-04-23-exp1-async-collective-flags-rejected.md](2026-04-23-
 - Profile: `raw/profiles/2026-04-23-gemma4-exp1-async-collectives/`; xprof symlink `gemma4_exp1_async_collectives_20260423`.
 
 **Hypothesis**:
-Baseline profile shows ~14% of step time in collectives + ~64 ms `async-collective-done` wait. The standard async-collective-fusion + latency-hiding flag bundle was predicted to overlap collectives with compute, shaving 5–10% off step time. Motivated by [async-collectives](../concepts/async-collectives.md) and hypothesis #9 in the program's pre-schema open list.
+Baseline profile shows ~14% of step time in collectives + ~64 ms `async-collective-done` wait. The standard async-collective-fusion + latency-hiding flag bundle was predicted to overlap collectives with compute, shaving 5–10% off step time. Motivated by [async-collectives](../../concepts/async-collectives.md) and hypothesis #9 in the program's pre-schema open list.
 
 **Changes made**:
 - Env only: `LIBTPU_INIT_ARGS` with the five flags above.

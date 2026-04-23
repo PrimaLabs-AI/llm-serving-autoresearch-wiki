@@ -16,7 +16,7 @@ Tried to swap our direct `make_splash_mha_single_device` wiring for `tokamax.dot
 
 **Statement**: Tokamax's mosaic_tpu wrapping of splash enables `use_base2_exp=True` (natural-exp softmax → base-2-exp with log2(e) Q rescale). On v6e, hardware exp2 is faster than natural exp. Expected 1–3% attention-path improvement, 0.3–1% end-to-end.
 
-Origin: post-exp-25 audit of remaining optimization knobs; noted that tokamax's default config has `use_base2_exp=True` while our direct splash call has no such flag (stock JAX splash doesn't expose it). See [tokamax Config at `pallas_mosaic_tpu.py:53`](../../codebases/tokamax.md) and [exp8 § Next hypotheses](2026-04-23-exp8-splash-attention.md).
+Origin: post-exp-25 audit of remaining optimization knobs; noted that tokamax's default config has `use_base2_exp=True` while our direct splash call has no such flag (stock JAX splash doesn't expose it). See [tokamax Config at `pallas_mosaic_tpu.py:53`](../../codebases/tokamax.md) and [exp8 § Next hypotheses](2026-04-23-exp8-splash-attention-accepted.md).
 
 ## Setup
 
@@ -95,8 +95,8 @@ If tokamax later adds sliding-window support (upstream fix to `pallas_mosaic_tpu
 
 ## See also
 
-- [exp 8 — first Pallas experiment](2026-04-23-exp8-splash-attention.md) — the original splash-via-shard_map wiring this exp27 tried to replace.
-- [exp 26 — scan-over-layers (parked)](2026-04-23-exp26-scan-over-layers.md) — similar parked-with-analysis outcome.
+- [exp 8 — first Pallas experiment](2026-04-23-exp8-splash-attention-accepted.md) — the original splash-via-shard_map wiring this exp27 tried to replace.
+- [exp 26 — scan-over-layers (parked)](2026-04-23-exp26-scan-over-layers-potential.md) — similar parked-with-analysis outcome.
 - [program.md § Pallas kernel landscape](program.md).
 - [tokamax codebase](../../codebases/tokamax.md) — `dot_product_attention` API; note mosaic_tpu sliding-window limitation.
 - [splash-attention concept](../../concepts/splash-attention.md).

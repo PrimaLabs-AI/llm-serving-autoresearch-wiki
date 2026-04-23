@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-23 — 146 pages (21 codebases + 34 sources + 81 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
+*Last updated: 2026-04-23 — 178 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -10,7 +10,7 @@
 ## Experiments (0)
 *None yet.*
 
-## Sources (34)
+## Sources (45)
 
 ### xprof documentation — capture & deployment (6)
 - [xprof — capturing profiles](sources/2026-xprof-capturing-profiles.md) — how XProf traces are captured (programmatic, on-demand gRPC, continuous snapshot).
@@ -64,7 +64,27 @@
 ### Methodology (1)
 - [LLM Wiki (Karpathy)](sources/2026-karpathy-llm-wiki.md) — the idea file this wiki's SCHEMA.md descends from. Raw/wiki/schema layers; ingest/query/lint ops; index+log navigation pair; contradiction-flag convention.
 
-## Codebases (21)
+### Scaling-book chapters (11, ingested 2026-04-23 from [scaling-book](codebases/scaling-book.md) @ `6cda371`, book dated 2025-02-04)
+- [Ch 1 — Rooflines](sources/2025-scaling-book-ch1-roofline.md) — three-constraint model + critical intensity thresholds (v5e 240, v5p 164, H100 296).
+- [Ch 2 — How to Think About TPUs](sources/2025-scaling-book-ch2-tpus.md) — TPU hardware (MXU / VPU / VMEM / HBM / ICI / DCN / PCIe); canonical per-chip specs for v5e/v5p.
+- [Ch 3 — Sharded Matrices](sources/2025-scaling-book-ch3-sharding.md) — four-case sharded-matmul taxonomy; collective-cost formulas.
+- [Ch 4 — Transformer Math](sources/2025-scaling-book-ch4-transformers.md) — FLOPs/params/KV-cache formulas; attention dominates FLOPs only when T > 8D.
+- [Ch 5 — Parallelize for Training](sources/2025-scaling-book-ch5-training.md) — DP/FSDP/TP/PP compute-comm thresholds on v5p.
+- [Ch 6 — Training LLaMA-3 on TPUs](sources/2025-scaling-book-ch6-applied-training.md) — LLaMA-3-70B on 8960-chip v5p pod, 44 days @ 40% MFU.
+- [Ch 7 — Transformer Inference](sources/2025-scaling-book-ch7-inference.md) — prefill/decode split; decode always bandwidth-bound.
+- [Ch 8 — Serving LLaMA-3-70B](sources/2025-scaling-book-ch8-applied-inference.md) — min topology by dtype (bf16 4×4, int8 4×2, int4 2×2).
+- [Ch 9 — Profiling TPU Programs](sources/2025-scaling-book-ch9-profiling.md) — HLO/LLO/xprof; matmul roofline matched to 0.4%.
+- [Ch 10 — Programming TPUs in JAX](sources/2025-scaling-book-ch10-jax.md) — Auto/Explicit/shard_map; collective matmul 1.27× via ppermute overlap.
+- [Ch 11 — How to Think About GPUs](sources/2025-scaling-book-ch11-gpus.md) — H100/B200 vs v5p/v5e; FLOPs/$ ranking.
+
+## Codebases (26)
+
+### Wave 4 follow-up — deferred Pallas ecosystem (5, added 2026-04-23)
+- [graphcast](codebases/graphcast.md) — commit `08cf736` — DeepMind weather model; splash wrapper + `WeatherMeshMask` (non-LLM block-sparse reference).
+- [simply](codebases/simply.md) — commit `f40b81e` — DeepMind serving framework; RPA wrapper that documents the DMA-overhead-bytes autotune heuristic (0.5 MiB virtual bytes).
+- [jaxite](codebases/jaxite.md) — commit `e4a3351` — Google FHE library; only non-ML Pallas TPU kernel in this wiki (CGGI bootstrap).
+- [qwix](codebases/qwix.md) — commit `b966dc4` — Google quantization framework; `QArray`-aware `pallas_call`; successor to AQT.
+- [aqt](codebases/aqt.md) — commit `9d1667e` — deprecated; superseded by qwix.
 
 ### Wave 4 — Pallas kernel ecosystem (11, added 2026-04-23)
 - [axlearn](codebases/axlearn.md) — commit `b479714` — Apple's training framework; **only public TPU Pallas Mamba1/Mamba2/RAttention SSM kernels**, plus splash extensions (dropout + logit sink); GPU Triton megablox (`arXiv:2507.05411`).
@@ -91,7 +111,28 @@
 - [scaling-book](codebases/scaling-book.md) — commit `6cda371` — "How To Scale Your Model" book (DeepMind); 11 chapters to be ingested as sources in Wave 3.
 - [autoresearch](codebases/autoresearch.md) — commit `228791f` — Karpathy's autoresearch reference impl (single H100, `val_bpb`); methodological model for this wiki's loop.
 
-## Concepts (81)
+## Concepts (96)
+
+### Pallas-authoring patterns (11, stubs — added 2026-04-23)
+- [online-softmax-with-logit-sink](concepts/online-softmax-with-logit-sink.md) — axlearn splash extension; add `exp(sink - m_final)` to normalizer.
+- [in-kernel-dropout](concepts/in-kernel-dropout.md) — generate dropout mask from prng_key + block indices (avoids HBM mask materialization).
+- [two-level-chunk-recomputation](concepts/two-level-chunk-recomputation.md) — SSD / Mamba2 pattern for linear-recurrence kernels.
+- [block-sparse-offset-masks](concepts/block-sparse-offset-masks.md) — precomputed `(n_q_blocks, n_kv_blocks)` offset table for paged-attention sliding-window.
+- [multi-shard-sequence-parallel-correction](concepts/multi-shard-sequence-parallel-correction.md) — recurrentgemma pattern for sequence-parallel linear recurrences.
+- [custom-splash-masks](concepts/custom-splash-masks.md) — subclass `splash_attention_mask.Mask` for any structured adjacency (LLM, weather, etc.).
+- [manual-mlir-dialect-pallas](concepts/manual-mlir-dialect-pallas.md) — drop below `pallas_call` to raw MLIR for SparseCore / TCGEN05 / TMEM features.
+- [pallas-on-triton-fused-gemm-activation-gemm](concepts/pallas-on-triton-fused-gemm-activation-gemm.md) — GPU fused-GLU pattern; alphafold3 v3.0.1 reference.
+- [grouped-program-ids-for-l2](concepts/grouped-program-ids-for-l2.md) — GPU-side PID reordering for L2 cache reuse (not applicable on TPU).
+- [dma-overhead-heuristic](concepts/dma-overhead-heuristic.md) — ~0.5 MiB virtual-bytes DMA-setup cost in block-size autotune.
+- [nvidia-weight-tile-bytes-limit](concepts/nvidia-weight-tile-bytes-limit.md) — 101,376-byte per-SM shared-memory weight-tile cap (H100/GB10/A100).
+
+### Autotune-harness patterns (3, stubs — added 2026-04-23)
+- [jaxpr-hash-cache-keys](concepts/jaxpr-hash-cache-keys.md) — pin autotune-cache to stringified jaxpr (marin/levanter pattern).
+- [compile-time-aware-autotune-filtering](concepts/compile-time-aware-autotune-filtering.md) — discard candidates whose compile cost > 0.20 s over baseline.
+- [vmem-oom-fallthrough](concepts/vmem-oom-fallthrough.md) — catch `resource_exhausted … vmem` at autotune, demote candidate.
+
+### Hardware facts (1, added 2026-04-23)
+- [vmem-budget](concepts/vmem-budget.md) — per-generation VMEM: v4 32, v5e 32, v5p 95, **v6e 96**, **v7 48** MiB (v6e→v7 halves).
 
 ### Architecture & hardware (12)
 - [memory-hierarchy](concepts/memory-hierarchy.md) — TPU memory stack (HBM, VMEM, SMEM, CMEM, host RAM).

@@ -84,7 +84,7 @@ No trace — exp 26 landed a diagnostic-only scaffold; the register call falls b
 - [program.md § Pallas kernel landscape and compile-time compression](program.md)
 - `torchax/model/scan_layers.py` (262 lines, on this branch only) — contains the full blocker analysis as a header docstring.
 - [torchax codebase](../../codebases/torchax.md) — `torchax.train.ScannedModule` is the Option A entry point.
-- [Gemma 4 source](../../codebases/transformers.md) — `modeling_gemma4.Gemma4TextModel.forward` is the rewrite target for Option B.
+- Gemma 4 source — `modeling_gemma4.Gemma4TextModel.forward` is the rewrite target for Option B. (No `codebases/transformers.md` page — the HF transformers library is not ingested as a codebase; refer directly to upstream `github.com/huggingface/transformers` at `src/transformers/models/gemma4/modeling_gemma4.py`.)
 
 ## Sources
 

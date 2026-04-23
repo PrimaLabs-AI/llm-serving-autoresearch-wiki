@@ -1,5 +1,62 @@
 # Log
 
+## [2026-04-23] ingest-batch + lint | Wave 4 follow-up — 15 concept stubs, 5 deferred codebases, 11 scaling-book chapters, lint pass
+
+**Op**: ingest-source (11 scaling-book chapters) + ingest-codebase (5 deferred repos) + manual (15 concept stubs) + lint.
+
+**Pages created (31)**:
+
+- **15 concepts** (per the 2026-04-23 Pallas kernel directory's "Reusable Pallas-authoring patterns" + hardware-fact list):
+  - 11 Pallas-pattern stubs: `online-softmax-with-logit-sink`, `in-kernel-dropout`, `two-level-chunk-recomputation`, `grouped-program-ids-for-l2`, `dma-overhead-heuristic`, `multi-shard-sequence-parallel-correction`, `block-sparse-offset-masks`, `custom-splash-masks`, `manual-mlir-dialect-pallas`, `pallas-on-triton-fused-gemm-activation-gemm`, `nvidia-weight-tile-bytes-limit`.
+  - 3 autotune-harness stubs (from marin/levanter harness): `jaxpr-hash-cache-keys`, `compile-time-aware-autotune-filtering`, `vmem-oom-fallthrough`.
+  - 1 hardware-fact concept: `vmem-budget` (v4 32 / v5e 32 / v5p 95 / **v6e 96** / **v7 48** MiB — the v6e→v7 halving).
+- **5 codebases** (deferred from Wave 4's lower-priority tier):
+  - `codebases/graphcast.md` (commit `08cf736`) — DeepMind weather model; splash wrapper + `WeatherMeshMask`.
+  - `codebases/simply.md` (`f40b81e`) — DeepMind serving framework; DMA-overhead-bytes autotune heuristic.
+  - `codebases/jaxite.md` (`e4a3351`) — Google FHE library; only non-ML Pallas TPU ref.
+  - `codebases/qwix.md` (`b966dc4`) — Google quantization framework; AQT successor.
+  - `codebases/aqt.md` (`9d1667e`) — deprecated; superseded by qwix.
+- **11 scaling-book source pages** (one per content chapter, per-chapter summaries from a parallel Explore agent; each page ~150 lines with key claims, key data points, techniques referenced, gaps & caveats, connections). Book dated 2025-02-04; **v6e mentioned briefly, v7 absent** — explicit gaps flagged on every chapter page.
+
+**Submodules added (5)**: `raw/code/{graphcast, simply, jaxite, qwix, aqt}`.
+
+**Pages updated**:
+- `README.md` — 5 new "Ingested codebases" entries.
+- `wiki/index.md` — Codebases 21→26 (new "Wave 4 follow-up" sub-section), Sources 34→45 (new "Scaling-book chapters (11)" sub-section), Concepts 81→96 (three new sub-sections: Pallas-authoring patterns, Autotune-harness patterns, Hardware facts). Header page count 146→178.
+
+**Key result**: Wave 4 follow-up work complete — concept-pattern stubs filed, deferred repos ingested, scaling-book finally out of "Wave 3 pending" limbo. Lint pass found and fixed 12 broken markdown links (all pre-existing in the gemma4 experiments tree — renamed experiment files with `-accepted` / `-rejected` / `-potential` suffixes whose cross-references hadn't been updated). Zero broken links remain.
+
+**Notes**:
+
+### Lint findings and actions taken
+- **12 broken `.md` links** — all fixed. Pattern: gemma4 experiment files were renamed with outcome suffixes (`-accepted` / `-rejected` / `-potential`) after initial cross-references were written. Bulk-fixed via `sed` across five referring files. Also fixed one `../concepts/` → `../../concepts/` relative-path error in `OBSERVATIONS.md`, and one reference to a non-existent `codebases/transformers.md` (replaced with explicit upstream reference to HF transformers repo).
+- **10 orphan pages** detected — all are pages created in this turn; all now indexed, no longer orphans.
+- **Zero submodule-commit drift** — every codebase page's pinned commit matches its submodule checkout.
+- **Zero `[!warning]` contradictions** in the wiki.
+- **Hypotheses-open-14+-days lint** skipped — the gemma4 program doesn't use separate hypothesis files (it tracks them inline in the program README).
+- **Experiments-without-profile-artifacts lint** skipped for this turn (not directly related to the new work).
+
+### Scaling-book ingestion discipline
+- Delegated per-chapter reading to an Explore subagent using a structured-summary schema; agent returned a 7,000-word consolidated summary that seeded the 11 source pages without requiring each chapter's full body in the main-agent context.
+- **v6e (Trillium) mentioned briefly** in Ch 2; **v7 (Ironwood) absent throughout** — every chapter page flags this as a "Gaps & caveats" note because the wiki's primary gemma4 program runs on v6e-4, meaning the book's constants are already one generation behind.
+- Chapter 4 KV-cache formula (`2 × S × L × K × H` bytes/sequence) and Chapter 7 critical-batch thresholds (B > 120 int8, B > 240 bf16) are the most directly-cite-able data points from the book.
+- Chapter 9 "matmul roofline matched to 0.4%" worked example is now documented as an upper-bound datapoint for any "is my profile-vs-roofline gap significant?" question.
+
+### Five deferred codebases — quick notes
+- **graphcast**: non-LLM splash example; `WeatherMeshMask` is the canonical "custom splash mask" reference cited on the concept stub.
+- **simply**: the DMA-overhead-bytes autotune heuristic (~0.5 MiB virtual bytes per DMA) comes from here; already concept-paged.
+- **jaxite**: only non-ML Pallas TPU reference in the wiki; bf16-byte-split → u32 reassembly pattern.
+- **qwix**: Google's **current** quantization framework; `QArray`-aware `pallas_call` wrapper is the right layer for future quant hypotheses.
+- **aqt**: predecessor; deprecated. Do not target for new work.
+
+### Remaining deferred / out-of-scope
+- `JetStream` (AI-Hypercomputer) — **archiving 2026-02-01**; deliberate skip.
+- `pytorch/xla` — consumer of tpu-inference via torch_xla custom ops; would be a framework page, not a Pallas source.
+- `labyrinth-ssr` / `Essential-AI/maxtext-external` — vendor-only snapshots with no novel content.
+- `pytorch/pytorch` — Inductor Pallas codegen is a compilation target, not a kernel library; deliberate skip.
+- `google-deepmind/gemma` — not enumerated by the directory analysis; remains a gap.
+- NVIDIA Mosaic-GPU kernels outside `jax-ml/jax` / tokamax / axlearn — not exhaustively surveyed; gap noted.
+
 ## [2026-04-23] ingest-codebase (batch) | Wave 4 — 11 Pallas-kernel repos
 
 **Op**: ingest-codebase (batch of 11, driven by the [2026-04-23 Pallas kernel directory analysis](analyses/2026-04-23-pallas-kernel-directory.md)'s "Recommended next ingestion wave").

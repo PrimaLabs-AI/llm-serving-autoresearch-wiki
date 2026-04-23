@@ -58,8 +58,8 @@ Park these permanently at batch=3 / seq=1024 / fsdp=4. At larger scale (differen
 
 ## See also
 
-- [exp 1 — async-collective-flag bundle (discard)](2026-04-23-exp1-async-collective-flags.md)
-- [exp 30 — latency-hiding-scheduler alone (flat)](2026-04-23-exp30-latency-hiding-solo.md)
+- [exp 1 — async-collective-flag bundle (discard)](2026-04-23-exp1-async-collective-flags-rejected.md)
+- [exp 30 — latency-hiding-scheduler alone (flat)](2026-04-23-exp30-latency-hiding-solo-potential.md)
 - [async-collectives concept](../../concepts/async-collectives.md)
 
 ## Sources

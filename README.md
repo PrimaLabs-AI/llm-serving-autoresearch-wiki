@@ -75,6 +75,11 @@ Then ask the agent to ingest it — see `SCHEMA.md` → `INGEST-CODEBASE`.
 - [EasyDeL](raw/code/EasyDeL) — training/serving framework wrapping ejkernel via an operations registry (same author)
 - [sglang-jax](raw/code/sglang-jax) — SGLang's JAX port; mostly vendored from tpu-inference; **novel speculative-decoding tree kernels** (EAGLE) and the ecosystem's largest tuning table (~2,000+ RPA entries)
 - [marin](raw/code/marin) — vendors levanter; **deployment-time autotune harness** (kernel-agnostic, shard-aware, compile-cost-aware, GCS-persistent) — the autotune pattern this wiki should emulate
+- [graphcast](raw/code/graphcast) — DeepMind weather-forecasting model; wrapper over upstream splash with custom `WeatherMeshMask` (non-LLM block-sparse example)
+- [simply](raw/code/simply) — DeepMind experimental serving framework; RPA wrapper that documents the DMA-overhead-bytes autotune heuristic (~0.5 MiB virtual bytes)
+- [jaxite](raw/code/jaxite) — FHE (Fully Homomorphic Encryption) Pallas kernels; only non-ML Pallas TPU reference in this wiki (CGGI bootstrap via bf16 byte-split matmul reassembly to u32)
+- [qwix](raw/code/qwix) — quantization framework; `QArray`-aware `pallas_call` wrapper; successor to AQT
+- [aqt](raw/code/aqt) — deprecated quantization framework; superseded by qwix
 
 ## Authoritative contract
 

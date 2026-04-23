@@ -69,7 +69,7 @@ Not merged. Branch preserved as reference.
 
 ## See also
 
-- [exp 1 — async-collective-flag bundle (discard)](2026-04-23-exp1-async-collective-flags.md) — the regression that motivated this isolation.
+- [exp 1 — async-collective-flag bundle (discard)](2026-04-23-exp1-async-collective-flags-rejected.md) — the regression that motivated this isolation.
 - [exp 25 — splash block=1024 (current best)](../..) (writeup gap)
 - [async-collectives concept](../../concepts/async-collectives.md).
 

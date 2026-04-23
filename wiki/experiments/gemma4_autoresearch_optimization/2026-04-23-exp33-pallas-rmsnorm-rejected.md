@@ -10,11 +10,11 @@ commit: "branch perfautoresearch/v6e4-20260423-exp33-pallas-rmsnorm (not merged)
 verdict: refuted
 ---
 
-Second hand-rolled-Pallas experiment after [exp 8 (splash attention)](2026-04-23-exp8-splash-attention.md). Goal: replace Gemma 4's 250+ `Gemma4RMSNorm` invocations per step with a TPU Pallas kernel + hand-written `jax.custom_vjp`, collapsing XLA's per-norm `loop fusion` cost into a single Mosaic custom-call. **Result: -8.1 % TPS.** Loss trajectory preserved (kernel numerics correct — unit-tested to within bf16 epsilon). The regression is a boundary-cost story: every norm now crosses a shard_map + custom-call boundary that the XLA fusion pass can no longer thread through neighbouring work.
+Second hand-rolled-Pallas experiment after [exp 8 (splash attention)](2026-04-23-exp8-splash-attention-accepted.md). Goal: replace Gemma 4's 250+ `Gemma4RMSNorm` invocations per step with a TPU Pallas kernel + hand-written `jax.custom_vjp`, collapsing XLA's per-norm `loop fusion` cost into a single Mosaic custom-call. **Result: -8.1 % TPS.** Loss trajectory preserved (kernel numerics correct — unit-tested to within bf16 epsilon). The regression is a boundary-cost story: every norm now crosses a shard_map + custom-call boundary that the XLA fusion pass can no longer thread through neighbouring work.
 
 ## Hypothesis under test
 
-**Statement**: XLA's `loop fusion` bucket (~683 ms per 3 profiled steps × 4 chips ≈ 57 ms/step globally, per [exp 8 writeup](2026-04-23-exp8-splash-attention.md)) is dominated after splash by the many RMSNorm instances. Gemma 4 E4B has **42 layers × 6 norms per layer** (`input_layernorm`, `post_attention_layernorm`, `pre_feedforward_layernorm`, `post_feedforward_layernorm`, `q_norm`, `k_norm`), plus a top-level `model.norm`, plus `v_norm` (`with_scale=False`), plus `embedding_pre_projection_norm`. If we replace all of them with a Pallas kernel that fuses the row reduction + rsqrt + weight-multiply + bf16↔fp32 casts into one custom-call, we save ~20 % of that bucket (~11 ms/step), clearing the path for >33,372 TPS.
+**Statement**: XLA's `loop fusion` bucket (~683 ms per 3 profiled steps × 4 chips ≈ 57 ms/step globally, per [exp 8 writeup](2026-04-23-exp8-splash-attention-accepted.md)) is dominated after splash by the many RMSNorm instances. Gemma 4 E4B has **42 layers × 6 norms per layer** (`input_layernorm`, `post_attention_layernorm`, `pre_feedforward_layernorm`, `post_feedforward_layernorm`, `q_norm`, `k_norm`), plus a top-level `model.norm`, plus `v_norm` (`with_scale=False`), plus `embedding_pre_projection_norm`. If we replace all of them with a Pallas kernel that fuses the row reduction + rsqrt + weight-multiply + bf16↔fp32 casts into one custom-call, we save ~20 % of that bucket (~11 ms/step), clearing the path for >33,372 TPS.
 
 **Why this looked reasonable a priori**: the splash custom-call did replace ~170 ms of attention-lowering with ~122 ms of Pallas kernel, a clean net win. Repeating the recipe for RMSNorm seemed mechanical.
 
@@ -101,7 +101,7 @@ Headline: the recipe that worked for attention (exp 8) does NOT generalize to el
 
 ## See also
 
-- [exp 8 — splash attention via Pallas](2026-04-23-exp8-splash-attention.md) — the reference Pallas integration pattern and the RMSNorm-targeted `loop fusion` observation.
+- [exp 8 — splash attention via Pallas](2026-04-23-exp8-splash-attention-accepted.md) — the reference Pallas integration pattern and the RMSNorm-targeted `loop fusion` observation.
 - [exp 25 best](../../..//RESULTS.tsv) — the baseline this was measured against.
 - [program.md § Pallas kernel landscape — kernels to BUILD](program.md).
 - [pallas_attention.py](torchax/model/pallas_attention.py) — the reference `_MESH` + `shard_map` + `call_jax` wiring this file mirrors.

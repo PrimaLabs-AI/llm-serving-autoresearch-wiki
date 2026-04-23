@@ -67,7 +67,7 @@ Loss trajectory identical within bf16-reorder noise vs exp 14 — confirms splas
 
 - [exp 14 — splash + bf16 CE at seq=2048 b=1](#) (writeup gap — see RESULTS.tsv row)
 - [exp 25 — splash block=1024, new best](#) (writeup gap — see RESULTS.tsv row)
-- [exp 9 — original seq=2048 NaN fix via splash](2026-04-23-exp9-splash-seq2048.md) — not on disk; see OBSERVATIONS.md gap note.
+- [exp 9 — original seq=2048 NaN fix via splash](2026-04-23-exp9-splash-seq2048-accepted.md) — not on disk; see OBSERVATIONS.md gap note.
 - [program.md § Pallas kernel landscape](program.md).
 
 ## Sources
