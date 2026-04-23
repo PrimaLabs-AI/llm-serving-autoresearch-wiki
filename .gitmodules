@@ -61,3 +61,18 @@
 [submodule "raw/code/marin"]
 	path = raw/code/marin
 	url = https://github.com/marin-community/marin
+[submodule "raw/code/graphcast"]
+	path = raw/code/graphcast
+	url = https://github.com/google-deepmind/graphcast
+[submodule "raw/code/simply"]
+	path = raw/code/simply
+	url = https://github.com/google-deepmind/simply
+[submodule "raw/code/jaxite"]
+	path = raw/code/jaxite
+	url = https://github.com/google/jaxite
+[submodule "raw/code/qwix"]
+	path = raw/code/qwix
+	url = https://github.com/google/qwix
+[submodule "raw/code/aqt"]
+	path = raw/code/aqt
+	url = https://github.com/google/aqt
