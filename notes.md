@@ -9,9 +9,21 @@ using git submodule add https://github.com/openxla/stablehlo under raw/code, upd
 using git submodule add https://github.com/openxla/xprof under raw/code, update readme
 using git submodule add https://github.com/jax-ml/scaling-book under raw/code, update readme
 using git submodule add https://github.com/karpathy/autoresearch  under raw/code, update readme
+using git submodule add https://github.com/linhkid/pallas-forge under raw/code, update readme
+using git submodule add https://github.com/jax-ml/jax under raw/code, update readme. 
+
 
 Injest https://huggingface.co/spaces/nanotron/ultrascale-playbook, save pictures references on the page
 Injest https://github.com/qihqi/learning_machine/tree/main/jax-huggingface
+
+search internet for all sources where pallas kernels code can be found. Do an extensive search in research
+> returns list, saved under wiki/analyses/2026-04-23-pallas-kernel-source-survey.md
+
+now based on this information reaserch every repo you listed and create a directory of available pallas kernels with references to source code, stability statetements, performance statements, application usecases, references where kernel is used
+
+
+
+
 
 
 Connect Obsidian

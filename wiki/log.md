@@ -1,5 +1,83 @@
 # Log
 
+## [2026-04-23] analyze | Pallas kernel directory — ~200 kernels across ~30 repos
+
+**Op**: analyze (directory/catalog; six parallel web-research agents).
+
+**Pages created**:
+- `wiki/analyses/2026-04-23-pallas-kernel-directory.md` — main directory page: cross-cutting functional-category tables (attention/paged/ring/MoE/norm/GLU/matmul/collectives/SSM/CE-loss), stability distribution, autotune/tuning-table inventory (crown jewels), reusable patterns (13 concept-page candidates), confirmed gaps, direct impact on open hypothesis candidates, recommended Wave-4 ingestion order.
+- `wiki/analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md` — ~55 kernels (jax-ml/jax + openxla/tokamax).
+- `wiki/analyses/pallas-kernel-directory/02-ai-hypercomputer.md` — ~17 kernels (maxtext + maxdiffusion + JetStream). JetStream archives 2026-02-01.
+- `wiki/analyses/pallas-kernel-directory/03-inference-engines.md` — ~33 kernels (vllm-project/tpu-inference + sglang-jax + aphrodite).
+- `wiki/analyses/pallas-kernel-directory/04-research-labs.md` — ~18 kernels (apple/axlearn + google-deepmind/{recurrentgemma, simply, graphcast, alphafold3@v3.0.1}).
+- `wiki/analyses/pallas-kernel-directory/05-frameworks-quant.md` — ~18 kernels (tunix, qwix, aqt, jaxite, paxml/praxis, pytorch/xla, marin/levanter, pytorch/pytorch Inductor).
+- `wiki/analyses/pallas-kernel-directory/06-community-research.md` — ~50 rows (ejkernel, EasyDeL, ringattention, flashback, gla-jax, sqtian, maxtext-external, tpu-research, recompute_dont_restore + small repos).
+
+**Pages updated**:
+- `wiki/index.md` — Analyses 2 → 3 + 6 subpages under a nested list; page count 128 → 135.
+
+**Key result**: **~200 Pallas kernels catalogued across ~30 repos**, each with source-path URL, backend, stability, performance claims (verbatim when they exist), use case, and callers. `mosaic_tpu` backend dominates (~60%). Every production-grade TPU kernel is either published upstream in jax-ml/jax / openxla/tokamax or vendored from them. Novel community kernels concentrated in six repos: **vllm-project/tpu-inference** (RPA v2/v3, MLA v1/v2, fused_moe v1, quantized_matmul blockwise, all_gather_matmul, fused_gdn, sparse_core, batched_rpa), **apple/axlearn** (Mamba1, Mamba2/SSD, RAttention linear-attention — the only public TPU-Pallas SSM kernels publicly), **AI-Hypercomputer/maxdiffusion** (ring_attention integrated with splash), **google-deepmind/alphafold3@v3.0.1** (production Pallas fused-GLU), **google-deepmind/recurrentgemma** (canonical LRU scan), **erfanzar/ejkernel** (broadest community TPU surface — 17 kernels).
+
+**Crown-jewel tuning artifacts**: sglang-jax's ~2,000+ entry RPA `tuned_block_sizes.py`; tpu-inference's 1,200+ RPA v2 + 600+ quantized_matmul + 47 megablox + 28 fused_moe v1 tables; marin/levanter's **kernel-agnostic deployment-time autotune harness** (jaxpr-hashed keys, compile-cost-aware candidate filtering at 0.20s threshold, VMEM-OOM fallthrough, GCS-persistent cache colocated with PJRT). VMEM budgets baked into kernels: quantized_matmul v6=96 MiB, v7=48 MiB; RPA default=100 MiB; update_kv_cache=64 MiB. DMA-overhead-equivalent from simply: ~0.5 MiB virtual bytes across TPU generations.
+
+**Notes**:
+- **Partial retractions and closures of open hypothesis candidates on [sources/2025-ultrascale-playbook.md](sources/2025-ultrascale-playbook.md)**:
+  - Candidate #2 ("wire tokamax `ring_attention_kernel` through `dot_product_attention`") — three public reference impls confirmed: maxdiffusion splash-integrated, haoliuhl canonical standalone, ejkernel splash wrapper. Hypothesis reduced from "open research" to "port + adapt" with three patterns to compare.
+  - Candidate #3 ("Zig-Zag Ring Attention on TPU — no implementation found") — **retraction stands.** Ring Attention Pallas exists publicly (§6.4), but Zig-Zag causal-balance variant is **confirmed absent from every repo surveyed**, including the canonical haoliuhl repo (straight unidirectional ring, `below_or_on_diag` check only — not load-balanced).
+  - Candidate #4 ("TPU-native Pallas kernels for gated_linear_unit and layer_norm in tokamax") — **partially retracted.** RMSNorm/LayerNorm absence from maxtext + tpu-inference + axlearn + upstream is external evidence that XLA-fusion is sufficient — **consistent with Gemma 4 exp 33's −8.1% empirical result.** Don't build RMSNorm. Fused GLU: AlphaFold3 v3.0.1 provides a production Pallas fused-GLU reference (GPU); porting to Mosaic-TPU is feasible but needs HLO-level validation that XLA isn't already fusing.
+- **External validation of Gemma 4 exp 33 lesson** ("Pallas loses when XLA already fuses"): maxtext + tpu-inference + axlearn hand-write megablox, ragged-paged-attention, gather-reduce-sc, fused_moe — but **do not** hand-write RMSNorm, SwiGLU, softmax, or elementwise activations. That absence is data.
+- **AlphaFold3 Pallas kernels live only on tag `v3.0.1`** — removed from `main`. Pin the tag in every URL.
+- **jondeaton/ring-attention-jax-pallas** — **404 confirmed**, repo does not exist. Dropped from the catalog. User has no matching public repo per `gh api users/jondeaton/repos`.
+- **Backend mislabels in community repos**: flashback, gla-jax, mamba2-jax-pallas all advertise Pallas but are Triton/Mosaic-GPU only. Only haoliuhl, ejkernel, sqtian, recompute_dont_restore, labyrinth-ssr (vendored), Essential-AI (vendored), and rdyro/moe_in_jax are actually TPU Pallas. Catalog flags each.
+- **New concept-page candidates** (13 surfaced): online-softmax-with-logit-sink, in-kernel-dropout, two-level-chunk-recomputation, grouped-program-ids-for-L2, DMA-overhead-heuristic, multi-shard-sequence-parallel-correction, block-sparse-offset-masks, jaxpr-hash-cache-keys, compile-time-aware-filtering, VMEM-OOM-fallthrough, manual-MLIR-dialect-Pallas, Pallas-on-Triton-fused-GEMM-activation-GEMM, custom-splash-masks. Not filed as stubs yet — listed on the main directory page under "Reusable Pallas-authoring patterns".
+- **Recommended Wave 4 ingestion order** (listed on the directory page): apple/axlearn (narrow kernel subdirs), vllm-project/tpu-inference, AI-Hypercomputer/maxtext, AI-Hypercomputer/maxdiffusion (narrow: splash_attention/ only), haoliuhl/ringattention, google-deepmind/alphafold3 @ v3.0.1 (narrow: gated_linear_unit/ only), google-deepmind/recurrentgemma, erfanzar/ejkernel + EasyDeL (paired), sgl-project/sglang-jax (narrow: speculative-decoding kernels), marin-community/marin (narrow: levanter/kernels/pallas/ + autotune harness).
+- **Methodology**: six general-purpose subagents in parallel, each with identical per-kernel row schema; verified top candidates via GitHub API + WebFetch. Durations ~4–6 minutes each; total wall clock ~6 minutes for research + ~10 minutes for consolidation.
+- **Gaps flagged**: NVIDIA Mosaic-GPU kernel catalog for GPU-side parity (enumerated in jax-ml/jax but not exhaustively surveyed in downstream GPU-Pallas repos); `google-deepmind/gemma` not checked; internal Google Gemini trees private; Anthropic/xAI/Cohere/Character private. Ragged-Paged-Attention arXiv ID appeared as `2604.15464` in one search result (likely future-dated scrape glitch) — verify before citing.
+
+## [2026-04-23] ingest-codebase | jax (jax-ml/jax)
+
+**Op**: ingest-codebase.
+**Pages created**:
+- `wiki/codebases/jax.md` — codebase parent page for `jax-ml/jax` at commit `feb5ba0585` (HEAD on 2026-04-23; bleeding-edge pin). Scoped to perf-relevant surfaces only — the repo is far too large for exhaustive ingestion.
+
+**Pages updated**:
+- `.gitmodules` — added `raw/code/jax` submodule.
+- `README.md` — added jax to "Ingested codebases" list at the top.
+- `wiki/index.md` — Codebases 9→10 (jax inserted at top); header count 127→128.
+
+**Key result**: The ground-truth JAX repo is now ingested. The codebase page focuses on the four perf-relevant surface buckets — transformations & compilation, parallelism & sharding, kernels & lowering, profiling & analysis — and indexes 12 concrete performance-relevant levers with file-path anchors. The **first-party reference TPU Pallas kernel tree** at `jax.experimental.pallas.ops.tpu.*` (splash_attention, paged_attention, ragged_paged_attention, megablox, flash_attention, matmul, all_gather, threefry) is now first-class in the wiki — previously referenced only transitively through tokamax's mirror and the 2026-04-23 pallas-kernel-source-survey analysis.
+
+**Notes**:
+- **Commit `feb5ba0585` is `HEAD` on 2026-04-23** — the most-recent possible pin when ingesting. `git submodule update --remote raw/code/jax` to bump.
+- **`jax.experimental.roofline` surfaced as a first-party alternative to `pallas-forge.roofline_chart`**: works on any JAX function, not just Pallas kernels; `roofline`, `register_roofline`, `roofline_and_grad` are the public API. The [pallas-forge](codebases/pallas-forge.md) page's `roofline_chart` is duplicated functionality; the codebase page flags this.
+- **`jax.experimental.compilation_cache`, `jax.experimental.layout`, `jax.lax.scan` are all named in the gemma4 ceiling analysis as remaining levers.** The jax page now gives them concrete file-path anchors. The compilation cache is "infrastructure only, no TPS" per the analysis; layout is the backing API for the SEQ_MINOR choice in exp 24; scan-over-layers Option B is one of three remaining viable paths.
+- **Splash-attention upstream-vs-mirror reconciliation**: `jax/experimental/pallas/ops/tpu/splash_attention/` in this repo is the authoritative upstream for both the wiki's splash-attention concept page and the `tokamax` `_src/ops/experimental/tpu/splash_attention/` copy. Future splash-tuning hypotheses can target either entry point; the jax codebase page now says so.
+- **MegaBlox (`ops/tpu/megablox/gmm.py`) is first-party for MoE grouped matmul.** The 2026-04-23 pallas-kernel-source-survey already surfaced this; the jax codebase page gives it the in-tree citation.
+- **Scope discipline**: page deliberately does not enumerate every jax module — numpy, scipy, nn, random, lax primitives other than `scan`, the jax2tf / jax2onnx paths, export/AOT surfaces beyond `serialize_executable`, the CUDA/Triton GPU Pallas path beyond a pointer, and the docs/tests/benchmarks directories are all explicitly out of scope. The page's job is to index the perf-relevant knobs, not to teach JAX.
+- **Two surfaces underused by this wiki so far, now documented**: `jax.experimental.source_mapper` (HLO↔Python back-reference — complements the xprof graph viewer) and `jax.experimental.custom_partitioning` (SPMD escape hatch — the mechanism production libraries use to route around partitioner gaps in ragged-paged-attention / MoE kernels per the pallas-kernel survey).
+- **No hypotheses / concept stubs filed.** Concept pages for most of the JAX surfaces ([pallas-kernel](concepts/pallas-kernel.md), [scan-over-layers](concepts/scan-over-layers.md), [sharding](concepts/sharding.md), [rematerialization](concepts/rematerialization.md), [jax-trace](concepts/jax-trace.md), etc.) already exist and link both ways.
+
+## [2026-04-23] analyze | Public Pallas kernel source survey
+
+**Op**: analyze (web-research survey).
+**Pages created**:
+- `wiki/analyses/2026-04-23-pallas-kernel-source-survey.md` — categorized inventory of every public source of JAX Pallas kernel code (Tier 1 production libraries → Tier 7 marginal). Agent-delegated WebSearch + WebFetch + GitHub API; verified top candidates.
+
+**Pages updated**:
+- `wiki/index.md` — Analyses 1 → 2; header page count 126 → 127.
+
+**Key result**: Five production-grade ingest candidates identified: **AI-Hypercomputer/maxtext** (direct trainer analogue), **vllm-project/tpu-inference** (broadest novel kernel surface: ragged-paged-attention v2/v3, MLA, gdn, sparse-core, structured-sparse-matmul), **AI-Hypercomputer/maxdiffusion** (ring-attention reference), **apple/axlearn** (Mamba/SSD + rattention), **sgl-project/sglang-jax** (simple-gla, spec-decoding).
+
+**Notes**:
+- **Partial retraction** on two open hypothesis candidates from [sources/2025-ultrascale-playbook.md](sources/2025-ultrascale-playbook.md):
+  - Candidate #2 ("wire tokamax `ring_attention_kernel` through `dot_product_attention`") — public reference impl exists at `AI-Hypercomputer/maxdiffusion/src/maxdiffusion/kernels/splash_attention/ring_attention_kernel.py`. Reduces the hypothesis from "open research" to "port + adapt".
+  - Candidate #3 ("Zig-Zag Ring Attention on TPU — no implementation found") — Ring Attention Pallas exists publicly in `haoliuhl/ringattention` (770⭐, canonical Liu et al. impl). Whether the specific Zig-Zag causal-balance variant is implemented remains unverified — needs code-level read.
+- **Cross-reference with gemma4 exp 33 lesson** ("Pallas loses when XLA already fuses"): external evidence supports this. maxtext and tpu-inference hand-write megablox, ragged-paged-attention, gather-reduce-sc — but **do not** hand-write RMSNorm or SwiGLU. That absence is data.
+- **AlphaFold3 Pallas GLU** exists at `google-deepmind/alphafold3` **tag v3.0.1** — removed from `main`. Pin the tag before referencing.
+- **New category surfaced: kernel-optimization agents** — `ucb-bar/autocomp`, `primatrix/Glaucis` (evolutionary Pallas search), `aryatschand/JAXBench` (LLM-authored kernel benchmark). Direct analogues to this wiki's autoresearch mission; worth shallow reads for search-procedure priors.
+- **Scope discipline**: did not file individual hypothesis pages or update the existing playbook hypothesis candidates; the analysis page cross-references them inline and leaves promotion to human adjudication.
+- **Gaps flagged in the analysis** for a follow-up sweep: NVIDIA Mosaic-GPU ops inside `jax-ml/jax`, GoogleCloudPlatform sample repos, `google-deepmind/gemma`, private-org repos (Anthropic, xAI, Cohere, Character), Ragged-Paged-Attention arXiv ID verification, `jondeaton/ring-attention-jax-pallas` 404 on verification.
+
 ## [2026-04-23] ingest-codebase + ingest-source | pallas-forge + Karpathy LLM-wiki backfill
 
 **Op**: ingest-codebase (pallas-forge) + ingest-source (Karpathy LLM-wiki).

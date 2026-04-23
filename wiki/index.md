@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-23 — 126 pages (9 codebases + 34 sources + 81 concepts + 1 model-program + 1 analysis)*
+*Last updated: 2026-04-23 — 135 pages (10 codebases + 34 sources + 81 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -64,7 +64,8 @@
 ### Methodology (1)
 - [LLM Wiki (Karpathy)](sources/2026-karpathy-llm-wiki.md) — the idea file this wiki's SCHEMA.md descends from. Raw/wiki/schema layers; ingest/query/lint ops; index+log navigation pair; contradiction-flag convention.
 
-## Codebases (9)
+## Codebases (10)
+- [jax](codebases/jax.md) — commit `feb5ba0` — The JAX library itself: transformations, sharding, `jax.profiler`, **`jax.experimental.roofline`**, Pallas DSL, and the first-party reference TPU kernel tree at `jax.experimental.pallas.ops.tpu.*` (splash_attention, paged_attention, ragged_paged_attention, megablox, flash_attention, matmul, all_gather, threefry). Ground-truth for every other codebase in this wiki.
 - [pallas-forge](codebases/pallas-forge.md) — commit `090510b` — Pallas kernel auto-tuning framework (tiled matmul, fused RMSNorm+residual, SwiGLU/GeGLU); **forward-only — no custom_vjp** so unusable in training as-is. Already evaluated via gemma4 exp 20 (rejected).
 - [jax-huggingface](codebases/jax-huggingface.md) — commit `93328b2` (subfolder of `qihqi/learning_machine`) — 4-part tutorial + scripts running HuggingFace Llama-2-7B and Stable Diffusion under JAX via torchax.
 - [xprof](codebases/xprof.md) — commit `2e33c01` — OpenXLA profiler + TensorBoard plugin; canonical metric vocabulary and profile-capture surface for every experiment.
@@ -177,5 +178,7 @@
 ## Observations (0)
 *None yet.*
 
-## Analyses (1)
+## Analyses (3)
+- [2026-04-23 Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md) — repo-by-repo catalog of ~200 Pallas kernels across ~30 repos, with source-code refs, stability, perf claims, use cases, and callers. Cross-cutting functional-category tables + 6 subpages ([§1 JAX+tokamax](analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md), [§2 AI-Hypercomputer](analyses/pallas-kernel-directory/02-ai-hypercomputer.md), [§3 Inference engines](analyses/pallas-kernel-directory/03-inference-engines.md), [§4 Research labs](analyses/pallas-kernel-directory/04-research-labs.md), [§5 Frameworks & quant](analyses/pallas-kernel-directory/05-frameworks-quant.md), [§6 Community](analyses/pallas-kernel-directory/06-community-research.md)). Confirms Zig-Zag ring attention absent everywhere; identifies AlphaFold3 @ v3.0.1 fused GLU and apple/axlearn SSM kernels as the key novel content.
+- [2026-04-23 Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — web-research inventory of every public source of Pallas kernel code. Identifies 5 top ingest candidates (maxtext, tpu-inference, maxdiffusion, axlearn, sglang-jax) and updates 3 open hypothesis candidates on the Ultra-Scale Playbook page with reference implementations found in the wild.
 - [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).

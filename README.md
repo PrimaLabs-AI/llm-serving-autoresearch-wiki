@@ -54,6 +54,7 @@ Then ask the agent to ingest it — see `SCHEMA.md` → `INGEST-CODEBASE`.
 
 ## Ingested codebases
 
+- [jax](raw/code/jax) — JAX library itself (jax-ml/jax): transformations, sharding, `jax.profiler`, `jax.experimental.roofline`, Pallas DSL, and first-party reference TPU kernels (`flash_attention`, `splash_attention`, `paged_attention`, `ragged_paged_attention`, `megablox`, `matmul`, `all_gather`, `threefry`). Ground-truth for every other codebase in this list.
 - [xprof](raw/code/xprof) — XProf profiler + TensorBoard plugin (OpenXLA)
 - [xprof-mcp](raw/code/xprof-mcp) — MCP server wrapping xprof for agent-driven profile analysis
 - [torchax](raw/code/torchax) — PyTorch-on-JAX interop layer (Google)
