@@ -219,13 +219,28 @@ Template per block (append-only, commit alongside code):
 
 ## The experiment loop
 
-**Branch model (MANDATORY — updated 2026-04-23 after 16-experiment retrospective)**: each experiment lives on **its own branch**, forked from the current session-trunk tip. The model is inherited from the core autoresearch doc and applies to this program.
+**Branch model (MANDATORY — updated 2026-04-23 after 16-experiment retrospective)**: each experiment lives on **its own branch**, forked from the current session-trunk tip (or another kept branch — see "hierarchical forking" below). The model is inherited from the core autoresearch doc and applies to this program.
+
+### Why branches matter
+
+Each experiment branch is a **persistent rollback point**. At any future moment you can `git checkout perfautoresearch/v6e4-<date>-exp<NN>-<slug>` to recover the exact code state that experiment ran on, read its `OBSERVATIONS.md` block, and start a new experiment from that state to explore an alternative direction. In-place editing on a single branch destroys that — the rejected experiments' code is gone the moment the next edit lands.
+
+The branch structure is therefore a **tree of hypotheses**, not a linear history:
+- The **trunk** (`perfautoresearch/v6e4-<date>`) is the main line of compounding wins — the sequence of *kept* experiments that make up the current best config.
+- **Side branches** are experiments that were run but not (yet) merged — discarded, crashed, or still-under-evaluation.
+- **Hierarchical forking**: a new experiment can fork from **any** kept branch in the tree, not only the current trunk tip. If exp 12 gave us splash+bf16-CE and we want to go back to exp 6's simpler baseline to try a totally different direction (say, tokamax CE instead of splash), we fork directly from `...-exp06-...` — exp 12's unrelated code isn't in the way. Use this when an earlier kept state is a cleaner ancestor for the new idea than the current trunk is.
+
+### Naming and commit rules
 
 - **Session trunk**: `perfautoresearch/v6e4-<YYYYMMDD>` (e.g. `perfautoresearch/v6e4-20260423`). Created once per session, branched from `main`. Holds only **kept** experiments.
-- **Per-experiment branch**: `perfautoresearch/v6e4-<YYYYMMDD>-exp<NN>-<short-slug>`. Forked from the session-trunk tip at the start of each experiment. All code edits + the experiment page + the `OBSERVATIONS.md` block + the `RESULTS.tsv` row for this experiment commit to this branch.
-- **Keep**: `git checkout <session-trunk>` + `git merge --no-ff <exp-branch>`. The `--no-ff` preserves a merge commit so the trunk history shows which changes were kept as discrete units. Next experiment forks from this new trunk tip.
-- **Discard / crash**: `git checkout <session-trunk>`. Leave the experiment branch alone — unmerged but present, fully recoverable. If the `OBSERVATIONS.md` update on the discarded branch has useful follow-ups, cherry-pick just that file onto the trunk.
-- **Retrospective**: the first 16 experiments in this program **violated this model** — code was overwritten in-place on `main` without per-experiment branches. Exps 1–16's exact intermediate code states are not recoverable from git; only the experiment pages describe what the code change was. The violation is preserved in the commit history as `71a45ae exp1-16: compound best-config reached` (the consolidation commit). From exp 17 onward, this discipline is enforced.
+- **Per-experiment branch**: `perfautoresearch/v6e4-<YYYYMMDD>-exp<NN>-<short-slug>`. Forked from the session-trunk tip (or a chosen prior kept branch) at the start of each experiment. Every code edit + the experiment page + the `OBSERVATIONS.md` block + the `RESULTS.tsv` row for this experiment commit **to this branch**, not to trunk.
+- **Keep**: `git checkout <session-trunk>` + `git merge --no-ff <exp-branch>`. The `--no-ff` preserves a merge commit so the trunk history shows which changes were kept as discrete units. Next experiment forks from this new trunk tip — **unless** a hierarchical fork from an older state is the better ancestor for the next hypothesis.
+- **Discard / crash**: `git checkout <session-trunk>`. Leave the experiment branch alone — unmerged but present, fully recoverable. If the `OBSERVATIONS.md` update on the discarded branch has useful follow-ups, cherry-pick just that file onto the trunk (`git checkout <branch> -- path/to/OBSERVATIONS.md`, commit on trunk). Do **not** cherry-pick the experiment's code change onto trunk — that's what "discard" means.
+- **Hierarchical branching example**: exp 18 might say "fork from exp 5's selective-remat branch, add tokamax CE, skip splash." The branch name reflects it: `...-20260423-exp18-tokamax-ce-from-exp05`. The descriptive suffix is free-form; include the parent exp number when forking from anywhere other than the current trunk tip.
+
+### Retrospective
+
+The first 16 experiments in this program **violated this model** — code was overwritten in-place on `main` without per-experiment branches. Exps 1–16's exact intermediate code states are not recoverable from git; only the experiment pages describe what the code change was. The violation is preserved as commit `71a45ae exp1-16: compound best-config reached` (the consolidation commit). From exp 17 onward, this discipline is enforced.
 
 No `git reset --hard` in the happy path. Failed attempts are parked as unmerged branches for later review; the trunk's git log is a clean record of only the *kept* changes.
 
