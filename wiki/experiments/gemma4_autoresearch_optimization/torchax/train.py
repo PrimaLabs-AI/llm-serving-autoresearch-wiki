@@ -308,6 +308,15 @@ def main(argv: Optional[list] = None) -> int:
     model.config._attn_implementation = impl_key
     print(f"[attention] using splash_pallas Pallas kernel")
 
+    # Exp 33 — optionally replace Gemma4RMSNorm with a hand-written Pallas
+    # kernel + hand-rolled custom_vjp. Env-gated so trunk is unaffected; the
+    # monkey-patch MUST land before JittableModule below (which captures
+    # forward at construction). See model/pallas_rmsnorm.py.
+    if os.environ.get("PALLAS_RMSNORM", "0") == "1":
+        from model.pallas_rmsnorm import register_pallas_rmsnorm  # noqa: E402
+        register_pallas_rmsnorm(mesh)
+        print(f"[rmsnorm] using pallas_rmsnorm (Gemma4RMSNorm.forward patched)")
+
     # Build sharding plan off the torch-side state dict keys --------------
     plan = get_param_sharding(model, mesh)
     for note in plan.notes:
