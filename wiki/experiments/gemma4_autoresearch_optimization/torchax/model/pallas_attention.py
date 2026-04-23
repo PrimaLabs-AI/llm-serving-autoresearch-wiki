@@ -93,9 +93,15 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
     # `seq_len >= 1024 => block >= 1024` is a tokamax pruning rule but the
     # upstream kernel also accepts 512 — we pick 512 to leave room for future
     # autotune over {128, 256, 512, 1024}.
+    # Exp 29 — asymmetric splash blocks. block_q stays at seq-width so
+    # each Q tile covers the full sequence in one shot; block_kv halved
+    # (and matching block_kv_compute) so each KV tile is smaller, which
+    # reduces per-tile VMEM use and may increase concurrency via overlap
+    # on the splash scheduler. At seq=1024, block_kv=512 ⇒ 2 KV tiles/Q
+    # tile, still small for the v6e ridge-point regime.
     block_q = min(1024, seq_len)
-    block_kv = min(1024, seq_len)
-    block_kv_compute = min(1024, seq_len)
+    block_kv = min(512, seq_len)
+    block_kv_compute = min(512, seq_len)
     # Exp 17 — enable the fused backward kernel. `use_fused_bwd_kernel=True`
     # requires the dQ-path block sizes (`block_q_dq`, `block_kv_dq`) to be
     # OMITTED (splash raises `ValueError: Block sizes for dq kernel are
