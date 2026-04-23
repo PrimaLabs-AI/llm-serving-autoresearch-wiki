@@ -93,9 +93,9 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
     # `seq_len >= 1024 => block >= 1024` is a tokamax pruning rule but the
     # upstream kernel also accepts 512 — we pick 512 to leave room for future
     # autotune over {128, 256, 512, 1024}.
-    block_q = min(512, seq_len)
-    block_kv = min(512, seq_len)
-    block_kv_compute = min(512, seq_len)
+    block_q = min(256, seq_len)
+    block_kv = min(256, seq_len)
+    block_kv_compute = min(256, seq_len)
     # Exp 17 — enable the fused backward kernel. `use_fused_bwd_kernel=True`
     # requires the dQ-path block sizes (`block_q_dq`, `block_kv_dq`) to be
     # OMITTED (splash raises `ValueError: Block sizes for dq kernel are
@@ -106,9 +106,9 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
         block_kv=block_kv,
         block_kv_compute=block_kv_compute,
         # Backward-pass tiles for dKV. The fused path still uses these.
-        block_q_dkv=min(512, seq_len),
-        block_kv_dkv=min(512, seq_len),
-        block_kv_dkv_compute=min(512, seq_len),
+        block_q_dkv=min(256, seq_len),
+        block_kv_dkv=min(256, seq_len),
+        block_kv_dkv_compute=min(256, seq_len),
         # block_q_dq / block_kv_dq intentionally omitted — see note above.
         use_fused_bwd_kernel=True,
     )
