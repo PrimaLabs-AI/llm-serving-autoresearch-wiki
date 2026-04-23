@@ -28,3 +28,36 @@
 [submodule "raw/code/jax"]
 	path = raw/code/jax
 	url = https://github.com/jax-ml/jax
+[submodule "raw/code/axlearn"]
+	path = raw/code/axlearn
+	url = https://github.com/apple/axlearn
+[submodule "raw/code/tpu-inference"]
+	path = raw/code/tpu-inference
+	url = https://github.com/vllm-project/tpu-inference
+[submodule "raw/code/ringattention"]
+	path = raw/code/ringattention
+	url = https://github.com/haoliuhl/ringattention
+[submodule "raw/code/recurrentgemma"]
+	path = raw/code/recurrentgemma
+	url = https://github.com/google-deepmind/recurrentgemma
+[submodule "raw/code/alphafold3"]
+	path = raw/code/alphafold3
+	url = https://github.com/google-deepmind/alphafold3
+[submodule "raw/code/ejkernel"]
+	path = raw/code/ejkernel
+	url = https://github.com/erfanzar/ejkernel
+[submodule "raw/code/maxdiffusion"]
+	path = raw/code/maxdiffusion
+	url = https://github.com/AI-Hypercomputer/maxdiffusion
+[submodule "raw/code/sglang-jax"]
+	path = raw/code/sglang-jax
+	url = https://github.com/sgl-project/sglang-jax
+[submodule "raw/code/EasyDeL"]
+	path = raw/code/EasyDeL
+	url = https://github.com/erfanzar/EasyDeL
+[submodule "raw/code/maxtext"]
+	path = raw/code/maxtext
+	url = https://github.com/AI-Hypercomputer/maxtext
+[submodule "raw/code/marin"]
+	path = raw/code/marin
+	url = https://github.com/marin-community/marin
