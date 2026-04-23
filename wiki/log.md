@@ -1,5 +1,50 @@
 # Log
 
+## [2026-04-23] ingest-codebase (batch) | Wave 4 — 11 Pallas-kernel repos
+
+**Op**: ingest-codebase (batch of 11, driven by the [2026-04-23 Pallas kernel directory analysis](analyses/2026-04-23-pallas-kernel-directory.md)'s "Recommended next ingestion wave").
+
+**Submodules added (11)**: `raw/code/{axlearn, tpu-inference, maxtext, maxdiffusion, ringattention, alphafold3, recurrentgemma, ejkernel, EasyDeL, sglang-jax, marin}`. **alphafold3 pinned to tag `v3.0.1`** (commit `231efc9`) because the ingested `gated_linear_unit/` directory was removed from `main` after that tag.
+
+**Pages created (11 codebases)**:
+- `wiki/codebases/axlearn.md` — novel SSM Pallas (Mamba1 / Mamba2-SSD / RAttention), splash extensions.
+- `wiki/codebases/tpu-inference.md` — broadest novel TPU Pallas surface; crown-jewel tuning tables.
+- `wiki/codebases/ringattention.md` — canonical Liu-2023 paper companion; unidirectional, no zig-zag.
+- `wiki/codebases/maxtext.md` — closest public analogue of this wiki's gemma4 program.
+- `wiki/codebases/maxdiffusion.md` — only repo wiring ring-attention as first-class splash-integrated kernel.
+- `wiki/codebases/alphafold3.md` — only public production-grade Pallas fused GLU (GPU via Triton-on-Pallas).
+- `wiki/codebases/recurrentgemma.md` — canonical LRU scan; ancestor of axlearn Mamba.
+- `wiki/codebases/ejkernel.md` — broadest community TPU Pallas surface (17 kernels).
+- `wiki/codebases/EasyDeL.md` — ejkernel consumer; operations-registry wrapper.
+- `wiki/codebases/sglang-jax.md` — novel EAGLE speculative-decoding tree kernels + largest tuning table.
+- `wiki/codebases/marin.md` — **deployment-time autotune harness** — the pattern this wiki should emulate.
+
+**Pages updated**:
+- `wiki/sources/2025-ultrascale-playbook.md` — Gaps & caveats: **partial retractions** on hypothesis candidates #2, #3, #4 based on the directory findings (ring-attention has three public refs; zig-zag still absent; RMSNorm/LayerNorm correctly unimplemented per exp 33; fused GLU reference exists at alphafold3 v3.0.1).
+- `wiki/codebases/tokamax.md` — ring-attention section updated to name the three public reference impls (maxdiffusion splash-integrated, haoliuhl canonical, ejkernel splash wrapper) and reiterate that zig-zag remains open.
+- `README.md` — added 11 new "Ingested codebases" entries; removed duplicate jax entry.
+- `wiki/index.md` — Codebases 10→21; split into "Wave 4" (the 11 new) and "Wave 1–3" (existing). Header count 135→146.
+
+**Key result**: Wave 4 ingestion complete — scope discipline held. The 11 new pages are shorter than average (50–180 lines each) because they intentionally defer per-kernel detail to the [pallas-kernel directory subpages](analyses/pallas-kernel-directory/) rather than re-transcribing. Every new codebase page links forward to the authoritative subpage §1–§6 row. Two partial retractions and one reaffirmation landed on the ultrascale playbook source page.
+
+**Notes**:
+- **Novelty anchors** (kernels / patterns that exist only in the newly-ingested repos):
+  - axlearn: Mamba1 (`mamba_kernels.py`), Mamba2/SSD (`ssd_kernels.py`), RAttention linear attention (`linear_attention_kernels.py`), splash-with-dropout + logit-sink.
+  - tpu-inference: RPA v3 (+ hd64), MLA v1/v2, fused_moe v1, quantized_matmul blockwise, all_gather_matmul, GDN + triangle_solver, SparseCore gather/scatter, structured_sparse_matmul v1.
+  - alphafold3 (v3.0.1): Pallas fused GLU (GPU, `mosaic_gpu` via Triton).
+  - recurrentgemma: LRU Pallas scan with complex accumulators + multi-shard correction.
+  - ringattention: canonical Pallas TPU ring-attention (paper companion).
+  - sglang-jax: EAGLE tree-speculative-sampling kernels + ~2,000+ RPA tuning entries (largest table surveyed).
+  - marin: deployment-time kernel-agnostic autotune harness with six distinguishing properties over tokamax's write-time tuner.
+- **Crown-jewel autotune patterns** (from marin's harness; all concept-candidate behaviors): compile-time-aware candidate filtering (threshold = 0.20 s), VMEM-OOM-aware fallthrough, sharding-preserving benchmark lowering, off-thread compile for mesh-bound contexts, jaxpr-hashed cache keys, GCS-aware persistent cache (shares bucket with PJRT compile cache).
+- **VMEM budgets baked into kernels** (concept-level facts from tpu-inference quantized_matmul): v6 = 96 MiB, v7 = 48 MiB. RPA default = 100 MB. update_kv_cache = 64 MB. Worth elevating to concept pages.
+- **NVIDIA weight-tile limit** (marin fused CE): `_NVIDIA_WEIGHT_TILE_BYTES_LIMIT = 101_376` — same on GB10 and H100. Concept fact.
+- **DMA-overhead-equivalent** (simply; not ingested but referenced): ~0.5 MiB virtual bytes, assumed constant across TPU generations.
+- **alphafold3 v3.0.1 pin discipline**: kernels removed from `main` after that tag. Every wiki link must include `@v3.0.1` or use the local submodule tree.
+- **Deferred** (per Wave 4 proposal lower-priority tier): jaxite (niche FHE non-ML), graphcast (wrapper), simply (wrapper), qwix/aqt (quant framework), JetStream (archiving 2026-02-01), pytorch/pytorch Inductor, labyrinth-ssr / Essential-AI (vendor-only), pytorch/xla (consumer of tpu-inference via torch_xla custom ops).
+- **Concept-page stubs not yet filed**: 13 reusable patterns surfaced by the directory (online-softmax-with-logit-sink, in-kernel-dropout, two-level-chunk-recomputation, grouped-program-ids-for-L2, DMA-overhead-heuristic, multi-shard-sequence-parallel-correction, block-sparse-offset-masks, jaxpr-hash-cache-keys, compile-time-aware-filtering, VMEM-OOM-fallthrough, manual-MLIR-dialect-Pallas, Pallas-on-Triton-fused-GEMM-activation-GEMM, custom-splash-masks). Candidate for a subsequent pass; not blocking.
+- **Ingestion-page verbosity note**: each new page deliberately short — the per-kernel detail is authoritative in the [pallas-kernel directory subpages](analyses/pallas-kernel-directory/) (written by six parallel research agents), so codebase pages link forward rather than re-transcribe. Following SCHEMA's "One entity/concept/model per page. Split when a page exceeds ~500 lines" rule + avoiding duplication.
+
 ## [2026-04-23] analyze | Pallas kernel directory — ~200 kernels across ~30 repos
 
 **Op**: analyze (directory/catalog; six parallel web-research agents).

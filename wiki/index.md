@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-23 — 135 pages (10 codebases + 34 sources + 81 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
+*Last updated: 2026-04-23 — 146 pages (21 codebases + 34 sources + 81 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -64,7 +64,22 @@
 ### Methodology (1)
 - [LLM Wiki (Karpathy)](sources/2026-karpathy-llm-wiki.md) — the idea file this wiki's SCHEMA.md descends from. Raw/wiki/schema layers; ingest/query/lint ops; index+log navigation pair; contradiction-flag convention.
 
-## Codebases (10)
+## Codebases (21)
+
+### Wave 4 — Pallas kernel ecosystem (11, added 2026-04-23)
+- [axlearn](codebases/axlearn.md) — commit `b479714` — Apple's training framework; **only public TPU Pallas Mamba1/Mamba2/RAttention SSM kernels**, plus splash extensions (dropout + logit sink); GPU Triton megablox (`arXiv:2507.05411`).
+- [tpu-inference](codebases/tpu-inference.md) — commit `a657060d` — vLLM's TPU backend; **broadest novel Pallas surface** (RPA v2/v3, MLA v1/v2, fused_moe v1, quantized_matmul blockwise, all_gather_matmul, GDN, SparseCore, structured-sparse-matmul); crown-jewel tuning tables (1,200+ RPA v2 + 600+ quantized_matmul entries; v6 96 MiB / v7 48 MiB VMEM).
+- [maxtext](codebases/maxtext.md) — commit `532c8b3d8` — AI-Hypercomputer reference JAX trainer for Gemma/Llama/DeepSeek/Qwen/Mistral/Kimi; splash + ragged-paged-attention + megablox GMM + MLIR-dialect SparseCore. Closest public analogue of the gemma4 program.
+- [maxdiffusion](codebases/maxdiffusion.md) — commit `c98002fe` — AI-Hypercomputer reference diffusion trainer; **only repo where ring-attention is wired as first-class splash-integrated kernel** (2026-04-16).
+- [ringattention](codebases/ringattention.md) — commit `d2ea1af` — haoliuhl's canonical Pallas TPU ring-attention (Liu et al. 2023 paper companion); unidirectional, no zig-zag. Closes ultrascale-playbook Gap #2.
+- [alphafold3](codebases/alphafold3.md) — commit `231efc9` (**tag v3.0.1**, removed from main) — only public production-grade **Pallas fused GLU** (GPU via Triton-on-Pallas); reference for a future TPU port.
+- [recurrentgemma](codebases/recurrentgemma.md) — commit `2efa84d` — Google DeepMind's canonical public Mosaic-TPU LRU Pallas scan (Griffin RG-LRU); ancestor of axlearn Mamba; real+complex accumulators + multi-shard correction.
+- [ejkernel](codebases/ejkernel.md) — commit `f2289a0` — single-author community Pallas library (erfanzar); broadest community TPU surface (17 kernels), Apache-2.0.
+- [EasyDeL](codebases/EasyDeL.md) — commit `090a03b2` — training/serving framework wrapping ejkernel via an operations registry (same author).
+- [sglang-jax](codebases/sglang-jax.md) — commit `7907875a` — SGLang JAX port; mostly vendored from tpu-inference; **novel EAGLE speculative-decoding tree kernels** + ecosystem's largest tuning table (~2,000+ RPA entries v4/v5/v6e/v7).
+- [marin](codebases/marin.md) — commit `7a56e016d` — vendors levanter; **deployment-time autotune harness** (kernel-agnostic, shard-aware, compile-cost-aware, GCS-persistent) — the autotune pattern this wiki should emulate.
+
+### Wave 1–3 (10)
 - [jax](codebases/jax.md) — commit `feb5ba0` — The JAX library itself: transformations, sharding, `jax.profiler`, **`jax.experimental.roofline`**, Pallas DSL, and the first-party reference TPU kernel tree at `jax.experimental.pallas.ops.tpu.*` (splash_attention, paged_attention, ragged_paged_attention, megablox, flash_attention, matmul, all_gather, threefry). Ground-truth for every other codebase in this wiki.
 - [pallas-forge](codebases/pallas-forge.md) — commit `090510b` — Pallas kernel auto-tuning framework (tiled matmul, fused RMSNorm+residual, SwiGLU/GeGLU); **forward-only — no custom_vjp** so unusable in training as-is. Already evaluated via gemma4 exp 20 (rejected).
 - [jax-huggingface](codebases/jax-huggingface.md) — commit `93328b2` (subfolder of `qihqi/learning_machine`) — 4-part tutorial + scripts running HuggingFace Llama-2-7B and Stable Diffusion under JAX via torchax.

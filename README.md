@@ -64,6 +64,17 @@ Then ask the agent to ingest it — see `SCHEMA.md` → `INGEST-CODEBASE`.
 - [autoresearch](raw/code/autoresearch) — Karpathy's autoresearch reference implementation (the methodology this wiki adapts to TPU perf)
 - [learning-machine](raw/code/learning-machine) — Qi Huang's JAX/ML experiments repo; the `jax-huggingface/` subfolder is ingested as the [jax-huggingface](wiki/codebases/jax-huggingface.md) codebase
 - [pallas-forge](raw/code/pallas-forge) — auto-tuning framework for Pallas kernels on TPU (block-size sweeps, roofline + xprof capture); ships fused RMSNorm+residual, tiled matmul, fused SwiGLU reference kernels
+- [axlearn](raw/code/axlearn) — Apple's public training framework; **only public TPU Pallas Mamba1/Mamba2/RAttention SSM kernels**, plus splash extensions (dropout + logit sink), GPU Triton megablox (`arXiv:2507.05411`)
+- [tpu-inference](raw/code/tpu-inference) — vLLM's TPU inference backend; **broadest novel Pallas surface** (RPA v2/v3, MLA v1/v2, fused_moe v1, quantized_matmul blockwise, all_gather_matmul, GDN, SparseCore, structured-sparse); crown-jewel tuning tables
+- [maxtext](raw/code/maxtext) — AI-Hypercomputer reference JAX trainer for Gemma/Llama/DeepSeek/Qwen/Mistral/Kimi; splash + ragged-paged-attention + megablox GMM + MLIR-dialect SparseCore
+- [maxdiffusion](raw/code/maxdiffusion) — AI-Hypercomputer reference JAX diffusion trainer; **only repo where ring-attention is wired in as first-class splash-integrated kernel** (announced 2026-04-16)
+- [ringattention](raw/code/ringattention) — haoliuhl's canonical Pallas TPU ring-attention (Liu et al. 2023 paper companion); unidirectional, no zig-zag
+- [alphafold3](raw/code/alphafold3) — pinned to tag **v3.0.1** — only public production-grade **Pallas fused GLU** (GPU via Triton-on-Pallas); kernels removed from `main` after v3.0.1
+- [recurrentgemma](raw/code/recurrentgemma) — Google DeepMind's canonical public Mosaic-TPU LRU Pallas scan (Griffin RG-LRU); ancestor of axlearn Mamba
+- [ejkernel](raw/code/ejkernel) — single-author community Pallas library (erfanzar); broadest community TPU surface (17 kernels), Apache-2.0
+- [EasyDeL](raw/code/EasyDeL) — training/serving framework wrapping ejkernel via an operations registry (same author)
+- [sglang-jax](raw/code/sglang-jax) — SGLang's JAX port; mostly vendored from tpu-inference; **novel speculative-decoding tree kernels** (EAGLE) and the ecosystem's largest tuning table (~2,000+ RPA entries)
+- [marin](raw/code/marin) — vendors levanter; **deployment-time autotune harness** (kernel-agnostic, shard-aware, compile-cost-aware, GCS-persistent) — the autotune pattern this wiki should emulate
 
 ## Authoritative contract
 

@@ -291,9 +291,11 @@ Same primitives, different substrate. ICI replaces NCCL/NVLink.
 - **Nothing in the playbook addresses:** ICI torus topology, VMEM sizing, splash attention backward block tuning, XLA compiler flags, HLO-level rematerialization policies, device-mesh shape optimization. These are the TPU-side surfaces that drive actual throughput.
 - **Hypothesis candidates** surfaced by this source but **not yet filed as hypothesis pages** (no `model:` page exists yet — schema requires one):
   1. Selective activation recomputation (attention-only) via `jax.checkpoint_policies` — expected 10–30% memory reduction, small compute cost, on the first model we ingest.
-  2. Wire tokamax `ring_attention_kernel` through `dot_product_attention` dispatch — kernel exists, API gap only.
-  3. Zig-Zag Ring Attention on TPU — no implementation found; algorithmic port from Brandon et al. 2023.
-  4. Implement a TPU-native Pallas kernel for `gated_linear_unit` and `layer_norm` in tokamax — currently fall back to XLA reference.
+  2. Wire tokamax `ring_attention_kernel` through `dot_product_attention` dispatch — kernel exists, API gap only. **PARTIAL RETRACTION (2026-04-23)** per [analyses/2026-04-23-pallas-kernel-directory.md](../analyses/2026-04-23-pallas-kernel-directory.md): **three public reference impls exist** — [maxdiffusion](../codebases/maxdiffusion.md)'s splash-integrated `ring_attention_kernel.py` (2026-04-16, recommended pattern), [ringattention](../codebases/ringattention.md)'s canonical paper companion (haoliuhl/ringattention, from-scratch flash inner kernel), and [ejkernel](../codebases/ejkernel.md)'s splash-wrapper. Reduces this hypothesis from "open research" to "port + adapt; pick among three patterns".
+  3. Zig-Zag Ring Attention on TPU — no implementation found; algorithmic port from Brandon et al. 2023. **RETRACTION STANDS (2026-04-23)** — confirmed absent from every repo surveyed in the pallas-kernel directory, including haoliuhl canonical (straight unidirectional, `below_or_on_diag` causal check only). Remains open.
+  4. Implement a TPU-native Pallas kernel for `gated_linear_unit` and `layer_norm` in tokamax — currently fall back to XLA reference. **PARTIAL RETRACTION (2026-04-23)**:
+     - **RMSNorm/LayerNorm**: external absence from maxtext + tpu-inference + axlearn + upstream is evidence that **XLA-fusion is sufficient**. [Gemma 4 exp 33](../experiments/gemma4_autoresearch_optimization/2026-04-23-exp33-pallas-rmsnorm-rejected.md)'s −8.1% empirical result agrees with the ecosystem. **Don't build.**
+     - **Fused GLU**: [alphafold3 @ v3.0.1](../codebases/alphafold3.md) provides a production Pallas fused-GLU reference (GPU). Porting to Mosaic-TPU is feasible; needs HLO-level validation that XLA isn't already fusing the equivalent pattern (same lesson as norm).
   5. Tile-scaled FP8 (DeepSeek-V3 1×128 / 128×128) via `jax.numpy.float8_*` on v6e.
   6. Expose tokamax splash-attention **backward** block sizes to the autotuner.
 

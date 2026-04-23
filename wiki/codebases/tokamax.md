@@ -154,6 +154,12 @@ Autotune (lines 110–140): powers of two and divisors of each dim, Cartesian pr
 
 File: [`_src/ops/experimental/tpu/splash_attention/ring_attention_kernel.py`](../../raw/code/tokamax/tokamax/_src/ops/experimental/tpu/splash_attention/ring_attention_kernel.py). Potential candidate for sequence-parallel TPU attention — currently reachable only by importing `ring_attention_kernel` directly.
 
+**2026-04-23 update (from the [pallas-kernel directory](../analyses/2026-04-23-pallas-kernel-directory.md))**: three public reference implementations of ring-attention on TPU now exist and close the "API gap only" characterization.
+- [**maxdiffusion** splash-integrated `ring_attention_kernel.py`](maxdiffusion.md) — announced 2026-04-16; composes with splash fwd + bwd primitives; reuses splash's bf16 tuning. **Recommended pattern** for wiring tokamax's ring kernel through a splash-style dispatch.
+- [**haoliuhl/ringattention**](ringattention.md) — canonical paper companion; from-scratch flash inner kernel; unidirectional, straight `below_or_on_diag` causal. Useful as reference for paper-fidelity understanding.
+- [**ejkernel** `ring_attention`](ejkernel.md) — splash wrapper (orchestration-only, not a novel kernel). Another reading of the same pattern.
+- **Zig-Zag (load-balanced) causal variant** (Brandon et al. 2023) **remains absent** from all surveyed repos including these three — an actual open algorithmic port.
+
 ### GPU — attention (SM90 / SM100 / Triton)
 
 Common `ConfigBase` at [`_src/ops/attention/pallas_mosaic_gpu_common.py`](../../raw/code/tokamax/tokamax/_src/ops/attention/pallas_mosaic_gpu_common.py) (lines 37–55):
