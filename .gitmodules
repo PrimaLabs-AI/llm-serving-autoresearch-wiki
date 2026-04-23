@@ -25,3 +25,6 @@
 [submodule "raw/code/pallas-forge"]
 	path = raw/code/pallas-forge
 	url = https://github.com/linhkid/pallas-forge
+[submodule "raw/code/jax"]
+	path = raw/code/jax
+	url = https://github.com/jax-ml/jax
