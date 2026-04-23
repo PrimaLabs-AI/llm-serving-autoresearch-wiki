@@ -274,6 +274,22 @@ After exp 1–7 established that stock XLA path + selective remat + batch=2 is t
 
 Exp 8 (splash attention) kicked off as the first Pallas experiment.
 
+### exp26 — scan-over-layers investigation — `parked`
+
+Canonical page: [2026-04-23-exp26-scan-over-layers.md](2026-04-23-exp26-scan-over-layers.md).
+
+**Branch**: `perfautoresearch/v6e4-20260423-exp26-scan-over-layers` (NOT merged). Scaffold `torchax/model/scan_layers.py` (262 lines) + 2-line `train.py` import/invoke, committed on branch only.
+
+**Hypothesis**: `jax.lax.scan` over the 42-layer decoder stack would compress HLO 42× (compile-step-0 ~150 s → ~5–15 s), possibly 2–8 % step-time win via shared activation buffers.
+
+**Outcome**: Option A (wrap `layers` with `torchax.train.ScannedModule`) rejected on 5 independent blockers (kwargs assertion, heterogeneous state_dict due to 18 kv-shared layers, Python-int `layer_idx`, side-effect dict carry, indexed per-layer inputs). Option B (custom scan body with stacked weights + explicit kv carry) scoped into 7 sub-problems B1–B7; requires a dedicated 300–500 line design pass, out of scope for a single autoresearch iteration. Landed the diagnostic scaffold with graceful fallback to HF's default forward so the trainer is unaffected.
+
+**Decision**: `parked`. Not a perf experiment (no runtime delta measured). Branch preserved as the starting analysis for any future Option B work. Trunk unaffected.
+
+### catchup note — 2026-04-23 — RESULTS.tsv backfilled for exp18–25
+
+Noted that per-experiment `.md` writeups for exp09–25 were not produced during the fast iteration window (the summary pass in this session captured the configs + deltas but not the full experiment pages). RESULTS.tsv has now been augmented with abbreviated rows for exp18 (fused-bwd+batch=3, +8.0 % over baseline), exp19 (splash block=256, discarded), exp20 (pallas-forge RMSNorm, invalid — no custom_vjp), exp21 (latency-hiding scheduler, discard — same compute-locality pattern as exp1/13), exp22 (batch=4, OOM), exp23 (seq=2048 b=2, OOM), exp24 (SEQ_MINOR layout, +0.5 % marginal), exp25 (splash block=1024, +0.6 % over exp24, NEW BEST +9.2 % over baseline). Full per-experiment pages for exp09–25 are a documentation debt; current best config is reproduced on trunk commit `ebb00ec`.
+
 ### approach update — 2026-04-23 — initial program.md landing
 
 This program.md landed at the start of the formal session, after the baseline + exp01 + exp02 were already run. Those three ran under a lighter-weight "optimization loop procedure" section in the program `README.md`; that section is now replaced by a pointer to this file. Future experiments (exp03 onward) follow this protocol. The pre-program.md experiments are retroactively transcribed into `RESULTS.tsv` and this `OBSERVATIONS.md` for continuity.

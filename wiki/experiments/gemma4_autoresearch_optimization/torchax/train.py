@@ -300,6 +300,8 @@ def main(argv: Optional[list] = None) -> int:
     # (shared across layers). Handles causal + sliding-window-512 via
     # splash mask builders; GQA 4:1 is native. See model/pallas_attention.py.
     from model.pallas_attention import register_splash_attention  # noqa: E402
+    from model.scan_layers import register_scan_over_layers  # noqa: E402
+    register_scan_over_layers(mesh)
     impl_key = register_splash_attention(mesh)
     # Gemma4Config is a composite: the real attn-impl flag lives on the text
     # sub-config used by Gemma4TextAttention. Set both defensively.
