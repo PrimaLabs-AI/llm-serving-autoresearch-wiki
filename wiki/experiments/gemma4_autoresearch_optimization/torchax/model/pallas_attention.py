@@ -108,7 +108,7 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
         block_kv_dkv_compute=min(512, seq_len),
         block_q_dq=min(512, seq_len),
         block_kv_dq=min(512, seq_len),
-        use_fused_bwd_kernel=False,
+        use_fused_bwd_kernel=True,
     )
 
     # Per-head mask. MHA mode requires exactly `num_q_heads` masks (splash
