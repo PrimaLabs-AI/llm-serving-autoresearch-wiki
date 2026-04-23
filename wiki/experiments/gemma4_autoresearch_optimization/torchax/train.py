@@ -308,6 +308,13 @@ def main(argv: Optional[list] = None) -> int:
     model.config._attn_implementation = impl_key
     print(f"[attention] using splash_pallas Pallas kernel")
 
+    # Exp 20 -- swap HF's default Gemma4RMSNorm.forward for a fused
+    # pallas-forge Pallas RMSNorm kernel. ~210 RMSNorm calls per forward
+    # (5 per layer x 42 layers + final self.norm), so even a modest win
+    # stacks. See model/pallas_rmsnorm.py.
+    from model.pallas_rmsnorm import register_pallas_rmsnorm  # noqa: E402
+    register_pallas_rmsnorm(mesh)
+
     # Build sharding plan off the torch-side state dict keys --------------
     plan = get_param_sharding(model, mesh)
     for note in plan.notes:
