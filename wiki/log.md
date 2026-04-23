@@ -1,5 +1,24 @@
 # Log
 
+## [2026-04-23] analyze | Gemma 4 E4B on v6e-4 — optimization ceiling reached at exp 25
+
+**Op**: analyze (session ceiling synthesis).
+
+**Pages created**:
+- [`wiki/analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md`](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment loop. Documents the trajectory (baseline 30,570 → exp 25 33,372, +9.2%), what worked vs what didn't, the step-time decomposition at exp 25, the Pallas-fuses-into-matmul lesson from exp 33, and what would actually move the needle next (hardware scale-up, scan-over-layers Option B, or accepting ceiling).
+
+**Pages updated**:
+- `wiki/index.md` — Analyses section populated.
+
+**Key result**: Optimization loop has reached diminishing returns on this hardware/model combo. Trunk stays at exp 25 (33,372 TPS, seq=1024 batch=3 fsdp=4 bf16, splash_pallas + SEQ_MINOR + block=1024 + fused_bwd + bf16 CE + selective remat). Eight experiments since exp 25 (exp 26–33) produced zero further wins: scan-over-layers blocked (5 Gemma-specific issues), tokamax DPA blocked (mosaic_tpu no sliding-window), 2D mesh 2.4× slower at this chip count, Pallas RMSNorm −8.1% due to XLA already fusing it with neighbor matmuls, long-seq and XLA-flag-isolation experiments neutral or dominated.
+
+**Notes**:
+- **Generalizable lesson (exp 33)**: Pallas kernels are a net win only when XLA wasn't already exploiting the pattern via fusion. Splash won (exp 8) because XLA can't express online-softmax. RMSNorm loses because XLA already fuses it. Likely Pallas SwiGLU would too — don't build it.
+- **Remaining viable paths** (none attempted here): (a) 300-500 LOC scan-over-layers Option B for compile-time compression, (b) hardware scale-up to v6e-8 or v5p-4 where 2D mesh and collective overlap become economic, (c) persistent compile cache (infrastructure only, no TPS).
+- **Exp 28 kept but not merged**: +0.9% at seq=2048 b=1 strictly dominated by exp 25's higher-batch throughput. Preserved for long-seq reference.
+
+---
+
 ## [2026-04-23] protocol + experiments | Gemma 4 E4B program — program.md formalization + exp2 crash
 
 **Op**: manual (protocol formalization) + run-experiment (exp2, crashed).

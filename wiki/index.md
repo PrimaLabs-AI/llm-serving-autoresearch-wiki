@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-22 — 123 pages (8 codebases + 33 sources + 81 concepts + 1 model-program)*
+*Last updated: 2026-04-23 — 124 pages (8 codebases + 33 sources + 81 concepts + 1 model-program + 1 analysis)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -173,5 +173,5 @@
 ## Observations (0)
 *None yet.*
 
-## Analyses (0)
-*None yet.*
+## Analyses (1)
+- [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).
