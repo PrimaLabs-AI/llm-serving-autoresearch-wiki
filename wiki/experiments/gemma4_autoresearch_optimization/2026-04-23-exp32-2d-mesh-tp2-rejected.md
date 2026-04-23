@@ -48,7 +48,11 @@ Loss trajectory clean (3.92 → 1.84 over 20 steps) — semantics preserved.
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2/`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2](http://localhost:8791/?run=2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2/`](../../../raw/profiles/2026-04-23-gemma4-exp32-2d-mesh-tp2-batch2/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — 2D dp=2 tp=2 at batch=2 (batch=3 OOM'd); 2.4× slower than matched-global-batch 1D baseline. Use this to see the TP all-reduce overhead at 2 chips/axis.
 
 ## Mechanism — why TP regresses on v6e-4
 

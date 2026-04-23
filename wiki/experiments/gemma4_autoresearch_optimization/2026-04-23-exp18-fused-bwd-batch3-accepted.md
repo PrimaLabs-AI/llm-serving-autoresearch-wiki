@@ -26,6 +26,14 @@ fused_bwd's ~2.5 ms/step savings + batch=3's amortization multiply. No surprise 
 | Step time | 375.5 ms | ~372 ms | −0.9 % |
 | HBM | 30.87 GiB | similar (still near ceiling) | ~flat |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp18-fused-bwd-batch3](http://localhost:8791/?run=2026-04-23-gemma4-exp18-fused-bwd-batch3) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp18-fused-bwd-batch3`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp18-fused-bwd-batch3/`](../../../raw/profiles/2026-04-23-gemma4-exp18-fused-bwd-batch3/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — fused_bwd + batch=3 on splash+bf16 CE; +8.0 % over baseline new best at the time.
+
 ## Verdict
 
 **SUPPORTED.** Merged to trunk (commit `e4d16dc`). Current best at this point.
@@ -40,3 +48,5 @@ fused_bwd's ~2.5 ms/step savings + batch=3's amortization multiply. No surprise 
 
 - `RESULTS.tsv` row `exp18`.
 - Commit `e4d16dc`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp18-fused-bwd-batch3/` — xprof run `2026-04-23-gemma4-exp18-fused-bwd-batch3` at http://localhost:8791/?run=2026-04-23-gemma4-exp18-fused-bwd-batch3
+

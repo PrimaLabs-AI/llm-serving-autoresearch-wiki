@@ -43,6 +43,14 @@ Splash's fused backward kernel combines dQ/dK/dV into one kernel call, saving ~2
 | Step time | 253.3 ms | 250.8 ms | −1.0 % |
 | Loss | clean | match | identical |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp17-splash-fused-bwd](http://localhost:8791/?run=2026-04-23-gemma4-exp17-splash-fused-bwd) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp17-splash-fused-bwd`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp17-splash-fused-bwd/`](../../../raw/profiles/2026-04-23-gemma4-exp17-splash-fused-bwd/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash `use_fused_bwd_kernel=True` with correct block-size config; ~2.5 ms/step saved on bwd pass.
+
 ## Verdict
 
 **SUPPORTED.** Merged on branch `perfautoresearch/v6e4-20260423-exp17-splash-fused-bwd`, then merged to trunk (commit `e71cdfc`).
@@ -56,3 +64,5 @@ Splash's fused backward kernel combines dQ/dK/dV into one kernel call, saving ~2
 
 - `RESULTS.tsv` row `exp17`.
 - Commits `6e0f354`, `e71cdfc`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp17-splash-fused-bwd/` — xprof run `2026-04-23-gemma4-exp17-splash-fused-bwd` at http://localhost:8791/?run=2026-04-23-gemma4-exp17-splash-fused-bwd
+

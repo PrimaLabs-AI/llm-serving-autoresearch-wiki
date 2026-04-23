@@ -65,7 +65,11 @@ Net: splash's 122 ms custom-call replaces ~170 ms of attention-related convoluti
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp8-splash-attention/`; xprof symlink `gemma4_exp8_splash_attention_20260423`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp8-splash-attention](http://localhost:8791/?run=2026-04-23-gemma4-exp8-splash-attention) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp8-splash-attention`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp8-splash-attention/`](../../../raw/profiles/2026-04-23-gemma4-exp8-splash-attention/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash Pallas kernel via `call_jax` + `shard_map`; custom-call op appears, replacing parts of convolution+loop fusion.
 
 ## Mechanism
 

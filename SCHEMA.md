@@ -146,7 +146,15 @@ commit: <model-repo-sha>
 verdict: supported | refuted | inconclusive | invalid
 ```
 - H2: Hypothesis under test, Setup (hardware, env, conda env, exact command — copy from model page and diff the changed flags), Baseline comparison, Results (table: metric × baseline × this run × delta × noise band), **Profile** (see below), Observations (links to observation pages produced), Verdict + reasoning, Next hypotheses (links).
-- **Profile section is mandatory whenever the run actually executed.** It must carry: (a) the exact directory path under `raw/profiles/<YYYY-MM-DD>-<exp-slug>/`, (b) which steps were captured (the `profile_steps` value or equivalent), (c) a one-line description of what's inside (xprof trace, HLO dump, memory profile, etc.), (d) the same `raw/profiles/...` path repeated in `## Sources`. Profiles are **gitignored** (multi-GB binary artifacts — see `.gitignore`), so this page is the sole persistent link between the trace on disk and the experiment that produced it. If the run was not executed (e.g., an infrastructure-only dry check), omit the section and note the reason in `## Verdict`.
+- **Profile section is mandatory whenever the run actually executed.** It must carry:
+  - (a) a **direct clickable browser URL into the xprof UI** for the run (e.g., `http://localhost:8791/?run=<run-name>` when a local xprof server is configured; use the project's documented base URL otherwise). This lets the reviewer jump straight to the interactive trace viewer.
+  - (b) the **run name** as it appears in the xprof server (typically the GCS/logdir subdirectory name).
+  - (c) the exact on-disk directory path under `raw/profiles/<YYYY-MM-DD>-<exp-slug>/`, **as a relative markdown link** from the experiment page so editors can click through to the trace folder.
+  - (d) which steps were captured (the `profile_steps` value or equivalent).
+  - (e) a one-line description of what's inside (xprof trace, HLO dump, memory profile, etc.).
+  - (f) the same `raw/profiles/...` path repeated in `## Sources`.
+  
+  Profiles are **gitignored** (multi-GB binary artifacts — see `.gitignore`), so this page is the sole persistent link between the trace on disk and the experiment that produced it. If the run was not executed (e.g., an infrastructure-only dry check, or a crash before step 0), omit the section and note the reason in `## Verdict`.
 - `invalid` is the verdict when the experiment changed model semantics or was otherwise unsound; in that case the measured speedup is **not reported** as a win.
 - Experiments are immutable once filed — if you rerun, file a new experiment and link them.
 

@@ -28,6 +28,14 @@ The HBM-ratchet heuristic: every memory saving (selective remat, bf16 CE) unlock
 | Per-token cost | 30.92 µs | 30.56 µs | −1.2 % |
 | Loss descent | healthy | healthy | match |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp15-splash-b3-bf16ce](http://localhost:8791/?run=2026-04-23-gemma4-exp15-splash-b3-bf16ce) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp15-splash-b3-bf16ce`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp15-splash-b3-bf16ce/`](../../../raw/profiles/2026-04-23-gemma4-exp15-splash-b3-bf16ce/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash + bf16 CE + batch=3; HBM 98.78 % at ceiling but per-token cost improved.
+
 ## Verdict
 
 **SUPPORTED.** Merged. Current best at this point. Per-token cost improved further with fused_bwd in exp 18.
@@ -41,3 +49,5 @@ The HBM-ratchet heuristic: every memory saving (selective remat, bf16 CE) unlock
 ## Sources
 
 - `RESULTS.tsv` row `exp15`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp15-splash-b3-bf16ce/` — xprof run `2026-04-23-gemma4-exp15-splash-b3-bf16ce` at http://localhost:8791/?run=2026-04-23-gemma4-exp15-splash-b3-bf16ce
+

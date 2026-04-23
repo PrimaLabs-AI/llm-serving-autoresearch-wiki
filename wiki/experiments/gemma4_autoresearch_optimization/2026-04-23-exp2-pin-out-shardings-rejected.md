@@ -59,7 +59,7 @@ The specific mechanism by which jit sees the `out_shardings` for `lm_head.weight
 
 ## Profile
 
-**No profile** — pre-trace crash, no run happened. Skipped the `## Profile` section here as permitted by `SCHEMA.md` behavioral rule #7 for un-executed runs.
+No trace — run crashed pre-trace at jit-compile due to tied-weight `lm_head`/`embed_tokens` sharding mismatch. No profile directory beyond the crash log.
 
 ## Verdict
 

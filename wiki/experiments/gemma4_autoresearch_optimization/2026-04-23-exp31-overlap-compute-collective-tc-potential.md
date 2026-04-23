@@ -33,7 +33,11 @@ This flag asks the scheduler to overlap tensor-core compute with collective comm
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp31-overlap-compute-collective-tc/`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp31-overlap-compute-collective-tc](http://localhost:8791/?run=2026-04-23-gemma4-exp31-overlap-compute-collective-tc) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp31-overlap-compute-collective-tc`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp31-overlap-compute-collective-tc/`](../../../raw/profiles/2026-04-23-gemma4-exp31-overlap-compute-collective-tc/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — `overlap_compute_collective_tc=true` alone; flat (−0.13 %).
 
 ## Combined conclusion (exp 30 + exp 31)
 

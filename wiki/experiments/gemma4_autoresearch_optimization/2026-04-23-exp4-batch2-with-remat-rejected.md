@@ -42,8 +42,11 @@ Origin: `program.md` HBM-ratchet heuristic — "when HBM drops, immediately try 
 
 ## Profile
 
-- Path: `raw/profiles/2026-04-23-gemma4-exp4-batch2-with-remat/`; xprof symlink `gemma4_exp4_batch2_remat_20260423`.
-- Captured steps: 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp4-batch2-with-remat](http://localhost:8791/?run=2026-04-23-gemma4-exp4-batch2-with-remat) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp4-batch2-with-remat`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp4-batch2-with-remat/`](../../../raw/profiles/2026-04-23-gemma4-exp4-batch2-with-remat/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 5, 6, 7
+- **What's inside**: xprof trace — full remat + batch=2; HBM at 92 %, per-token cost degraded.
 
 ## Mechanism
 

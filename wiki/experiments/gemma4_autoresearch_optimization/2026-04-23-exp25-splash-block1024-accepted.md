@@ -39,6 +39,14 @@ Also matching `block_q_dkv / block_kv_dkv / block_kv_dkv_compute` bumped to 1024
 | Step time | ~370 ms | ~368 ms | −0.5 % |
 | Loss | clean | match | identical |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp25-splash-block1024](http://localhost:8791/?run=2026-04-23-gemma4-exp25-splash-block1024) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp25-splash-block1024`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp25-splash-block1024/`](../../../raw/profiles/2026-04-23-gemma4-exp25-splash-block1024/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — **session-best config**: splash block=1024 + SEQ_MINOR + fused_bwd + bf16 CE + selective remat + batch=3. 33,372 TPS, +9.2 % over baseline.
+
 ## Verdict
 
 **SUPPORTED.** Merged to trunk (commit `ebb00ec`).
@@ -68,3 +76,5 @@ See [the ceiling analysis](../../analyses/2026-04-23-gemma4-v6e4-optimization-ce
 
 - `RESULTS.tsv` row `exp25`.
 - Commits `bc26a7b` (direct), `ebb00ec` (merge to trunk).
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp25-splash-block1024/` — xprof run `2026-04-23-gemma4-exp25-splash-block1024` at http://localhost:8791/?run=2026-04-23-gemma4-exp25-splash-block1024
+

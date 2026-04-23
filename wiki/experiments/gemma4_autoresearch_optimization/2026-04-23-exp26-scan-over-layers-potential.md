@@ -62,6 +62,10 @@ No runtime delta measured — the register call falls back to HF's default forwa
 
 Trainer continues with stock forward. TPS / compile-time / HBM unchanged from exp 25 baseline (this branch).
 
+## Profile
+
+No trace — exp 26 landed a diagnostic-only scaffold; the register call falls back to HF's stock forward. Runtime unaffected vs exp 25.
+
 ## Verdict
 
 **PARKED.** Not a kept experiment (no perf change). Not a failure (no regression). Option A is permanently refuted for Gemma 4; Option B is a viable future project with a clear sub-problem decomposition but out of scope for a single autoresearch iteration.

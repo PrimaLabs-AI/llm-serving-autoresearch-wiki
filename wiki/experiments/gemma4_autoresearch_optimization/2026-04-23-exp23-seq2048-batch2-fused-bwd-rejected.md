@@ -22,6 +22,14 @@ fused_bwd reduces backward-pass memory; maybe enough to unblock seq=2048 b=2 (th
 
 No. The 1.25 GiB gap is structural.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd](http://localhost:8791/?run=2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd/`](../../../raw/profiles/2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: none (run did not reach training steps)
+- **What's inside**: No runtime trace — compile-time HBM OOM at same 1.25 GiB threshold.
+
 ## Verdict
 
 **REJECTED — crash.** Not merged. The same lesson as exp 22: batch/seq ratchet is blocked by XLA compile-time accounting; changing which kernel handles the bwd doesn't help.
@@ -34,3 +42,5 @@ No. The 1.25 GiB gap is structural.
 
 - `RESULTS.tsv` row `exp23`.
 - Commit `4164f12`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd/` — xprof run `2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd` at http://localhost:8791/?run=2026-04-23-gemma4-exp23-seq2048-b2-fused-bwd
+

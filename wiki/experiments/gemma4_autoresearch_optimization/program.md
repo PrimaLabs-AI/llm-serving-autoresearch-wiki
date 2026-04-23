@@ -18,7 +18,8 @@ Single-environment program (no `program-<env>.md` split yet). These are the fact
 | libtpu version | **0.0.40** (confirmed latest across PyPI, libtpu-lts-releases, libtpu-nightly-releases). No newer version available as of 2026-04-23. When a flag is rejected as unknown, `strings $CONDA_PREFIX/lib/python3.13/site-packages/libtpu/libtpu.so | grep xla_tpu_<token>` is the source of truth. |
 | Profile directory | `raw/profiles/<YYYY-MM-DD>-<slug>/` under the wiki repo root. **Gitignored.** |
 | HLO dump directory | `raw/profiles/<YYYY-MM-DD>-<slug>/hlo/` (colocated). |
-| xprof_mcp server | Already running on this host (pid 369567) with `--logdir=/mnt/disks/persist/torch-tpu/dump_folder/profiles --port=8791`. To make a captured profile queryable, symlink the session dir into `/mnt/disks/persist/torch-tpu/dump_folder/profiles/plugins/profile/<descriptive_name>`. Then `mcp__xprof__list_runs` will show it. |
+| xprof_mcp server | `xprof --logdir=gs://tpu-pytorch-alekseyv-us-central2/autoresearch --port=8791` (GCS-backed). To make a captured profile queryable in the **xprof browser UI**: upload the session dir to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/<run-name>/` (with the `plugins/profile/...` subtree inside), then `mcp__xprof__list_runs` reports it and it appears in the dropdown at `http://localhost:8791/`. Historical local path `/mnt/disks/persist/torch-tpu/dump_folder/profiles/plugins/profile/<name>/` still works for older symlinked runs but is not the current server logdir. |
+| xprof browser URL | **Per-run direct URL**: `http://localhost:8791/?run=<run-name>` (TensorBoard-style — opens the interactive trace viewer for that run). Every experiment page **must** include this URL under `## Profile` alongside the on-disk path so the reviewer can click straight through to the visual inspector. Convention for `<run-name>`: the last path component of the profile directory, e.g. `2026-04-23-gemma4-exp25-splash-block1024`. |
 | Experiment page slug | `<YYYY-MM-DD>-exp<NN>-<short-slug>-<verdict-suffix>.md` in this folder, where `<verdict-suffix>` ∈ { `accepted`, `rejected`, `potential` } per the rule below. The original baseline `<YYYY-MM-DD>-baseline.md` has no verdict suffix (it is the reference, not a hypothesis test). |
 | Experiment verdict suffix | **Rule**: once an experiment's verdict is final, the page filename MUST end with one of three suffixes before `.md`, reflecting the `RESULTS.tsv` status. `-accepted` for `keep` / `supported` (hypothesis confirmed and useful). `-rejected` for `discard` / `refuted` / `crash` / `invalid` (hypothesis disconfirmed or unusable). `-potential` for `parked` / `inconclusive` (hypothesis not settled — revisit when conditions change). The suffix is part of the filename at file-creation time; rename on status change. This makes directory listings of `wiki/experiments/<program>/` self-summarizing. |
 | Timeout per experiment | **15 minutes** wall-clock. Kill and mark `crash` otherwise. |
@@ -181,7 +182,8 @@ Template per block (append-only, commit alongside code):
 
 **Config**:
 - Command diff from prior keep: <flag diffs + code change summary>
-- Profile path: `raw/profiles/<YYYY-MM-DD>-<slug>/`
+- Profile path: `raw/profiles/<YYYY-MM-DD>-<slug>/` (on-disk, gitignored; link as relative markdown for IDE click-through)
+- **Profile browser URL** (mandatory if run executed): `http://localhost:8791/?run=<YYYY-MM-DD>-<slug>`
 - HLO dump path: `raw/profiles/<YYYY-MM-DD>-<slug>/hlo/`
 - Experiment page: `<YYYY-MM-DD>-exp<NN>-<slug>-<verdict-suffix>.md` (accepted/rejected/potential — see Fixed bindings)
 

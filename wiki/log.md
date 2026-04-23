@@ -1,5 +1,25 @@
 # Log
 
+## [2026-04-23] ingest-codebase + ingest-source | pallas-forge + Karpathy LLM-wiki backfill
+
+**Op**: ingest-codebase (pallas-forge) + ingest-source (Karpathy LLM-wiki).
+**Pages created**:
+- `wiki/codebases/pallas-forge.md` — codebase parent page for `linhkid/pallas-forge` at commit `090510b7`. Already used (and found wanting) in gemma4 exp 20; the page makes that context first-class and captures the methodological lessons (isolated-microbench vs in-graph, no-custom_vjp blocker, v5e-only numbers, canonical 3D-grid matmul template).
+- `wiki/sources/2026-karpathy-llm-wiki.md` — source page for Karpathy's "LLM Wiki" idea file, the methodological ancestor of this wiki's `SCHEMA.md`. Already locally saved as `raw/sources/2026-karpathy-llm-wiki.md`; backfilling the wiki-side page makes the design lineage explicit.
+
+**Pages updated**:
+- `wiki/index.md` — Codebases 8→9 (added pallas-forge at top of list); Sources 33→34 (new "Methodology (1)" subsection); header count bumped to 126 pages.
+
+**Key result**: Two ingestion gaps closed. The pallas-forge page consolidates what the gemma4 program has already learned about the library (exp 20 + exp 33) rather than letting it sit only in experiment pages; the Karpathy-wiki source page documents where this wiki's operating protocol comes from, which matters for future schema edits.
+
+**Notes**:
+- **pallas-forge status recap (as captured on the codebase page)**: 3 reference kernels, tuner, roofline, XProf-trace integration — *but* forward-only (no `jax.custom_vjp`), so any training hypothesis that swaps a pallas-forge kernel into a module's `forward` crashes at `jax.value_and_grad` ("Linearization failed to produce known values"). Gemma4 exp 20 is the direct confirmation. Alternative for kernel swaps in training: [tokamax](codebases/tokamax.md) (exposes autodiff-capable `rms_norm` / `layer_norm` / splash-attention paths).
+- **Generalizable lesson already in the wiki, now cross-linked**: from the 2026-04-23 Gemma 4 optimization-ceiling analysis (exp 33) — *"Pallas kernels are a net win only when XLA wasn't already exploiting the pattern via fusion"*. pallas-forge's v5e README numbers (3.44× RMSNorm isolated-microbench) do not predict in-graph wins on v6e-4; exp 33 showed an 8.1% regression. The codebase page flags this explicitly under "Performance-relevant surfaces §3 Isolated-microbench ≠ in-graph gain".
+- **pallas-forge `TPU_SPECS` gap**: the hardware-preset table for `roofline_chart` covers v4/v5e/v5p only; no v6e entry. Anyone running `roofline_chart` on v6e must supply peak-TFLOPS and peak-HBM-bandwidth directly.
+- **Karpathy-wiki source is methodology, not TPU-perf content**: ingested to make the schema's lineage traceable; no hypotheses generated. Its "Connections" section explicitly maps the source's pattern to this wiki's `SCHEMA.md` / `CLAUDE.md` / `index.md` / `log.md` implementations.
+- **Ingestion-audit findings recorded for completeness**: (1) the `notes.md` TODO `using git submodule add https://github.com/linhkid/pallas-forge under raw/code, update readme` was already satisfied (`.gitmodules` entry exists, `raw/code/pallas-forge/` is checked out at commit `090510b`); the only missing piece was the wiki page, now filed. (2) `raw/sources/2026-karpathy-llm-wiki.md` was on disk but had no wiki counterpart, now filed. (3) No other unprocessed raw sources or un-documented submodules found.
+- **Out of scope for this ingestion** (per `notes.md` lines 28–37, the gemma-4-E4B import + torchax trainer work): that is implementation, not ingestion; the Gemma 4 program already has its own `experiments/gemma4_autoresearch_optimization/` tree with 33 experiments completed and a ceiling analysis filed. Not touched.
+
 ## [2026-04-23] analyze | Gemma 4 E4B on v6e-4 — optimization ceiling reached at exp 25
 
 **Op**: analyze (session ceiling synthesis).

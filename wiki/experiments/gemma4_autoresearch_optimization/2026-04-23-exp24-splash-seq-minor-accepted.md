@@ -38,6 +38,14 @@ Tokamax's `pallas_mosaic_tpu` exposes `q_layout / k_layout / v_layout` as autotu
 | TPS | 33,016 | **33,193** | **+0.5 %** (+8.6 % vs baseline) |
 | Loss | clean | match | identical |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp24-splash-seq-minor](http://localhost:8791/?run=2026-04-23-gemma4-exp24-splash-seq-minor) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp24-splash-seq-minor`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp24-splash-seq-minor/`](../../../raw/profiles/2026-04-23-gemma4-exp24-splash-seq-minor/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash QKVLayout.SEQ_MINOR at batch=3 + fused_bwd; +0.5 % marginal.
+
 ## Verdict
 
 **SUPPORTED.** Merged (commit `0fabe79`).
@@ -52,3 +60,5 @@ Tokamax's `pallas_mosaic_tpu` exposes `q_layout / k_layout / v_layout` as autotu
 
 - `RESULTS.tsv` row `exp24`.
 - Commits `8cec59e`, `0fabe79`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp24-splash-seq-minor/` — xprof run `2026-04-23-gemma4-exp24-splash-seq-minor` at http://localhost:8791/?run=2026-04-23-gemma4-exp24-splash-seq-minor
+

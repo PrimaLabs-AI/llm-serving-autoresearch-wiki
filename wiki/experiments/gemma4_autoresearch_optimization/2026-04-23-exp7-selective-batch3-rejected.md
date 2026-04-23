@@ -38,7 +38,11 @@ Attempted to push batch from 2 to 3 on top of exp 5/6's selective remat. Per-tok
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp7-selective-batch3/`; xprof symlink `gemma4_exp7_selective_batch3_20260423`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp7-selective-batch3](http://localhost:8791/?run=2026-04-23-gemma4-exp7-selective-batch3) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp7-selective-batch3`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp7-selective-batch3/`](../../../raw/profiles/2026-04-23-gemma4-exp7-selective-batch3/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 5, 6, 7
+- **What's inside**: xprof trace — selective remat + batch=3; HBM 97.6 % at ceiling, degraded per-token cost.
 
 ## Mechanism
 

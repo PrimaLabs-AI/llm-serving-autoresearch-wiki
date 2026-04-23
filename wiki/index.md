@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-23 — 124 pages (8 codebases + 33 sources + 81 concepts + 1 model-program + 1 analysis)*
+*Last updated: 2026-04-23 — 126 pages (9 codebases + 34 sources + 81 concepts + 1 model-program + 1 analysis)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -10,7 +10,7 @@
 ## Experiments (0)
 *None yet.*
 
-## Sources (33)
+## Sources (34)
 
 ### xprof documentation — capture & deployment (6)
 - [xprof — capturing profiles](sources/2026-xprof-capturing-profiles.md) — how XProf traces are captured (programmatic, on-demand gRPC, continuous snapshot).
@@ -61,7 +61,11 @@
 ### External publications (1)
 - [Ultra-Scale Playbook (2025)](sources/2025-ultrascale-playbook.md) — Tazi et al., Hugging Face, Feb 2025. GPU-cluster LLM-training playbook (5D parallelism, FlashAttention, FP8, kernel engineering). Ingested with GPU↔TPU contrast emphasis; 90 figures saved under `raw/assets/ultrascale-playbook/`.
 
-## Codebases (8)
+### Methodology (1)
+- [LLM Wiki (Karpathy)](sources/2026-karpathy-llm-wiki.md) — the idea file this wiki's SCHEMA.md descends from. Raw/wiki/schema layers; ingest/query/lint ops; index+log navigation pair; contradiction-flag convention.
+
+## Codebases (9)
+- [pallas-forge](codebases/pallas-forge.md) — commit `090510b` — Pallas kernel auto-tuning framework (tiled matmul, fused RMSNorm+residual, SwiGLU/GeGLU); **forward-only — no custom_vjp** so unusable in training as-is. Already evaluated via gemma4 exp 20 (rejected).
 - [jax-huggingface](codebases/jax-huggingface.md) — commit `93328b2` (subfolder of `qihqi/learning_machine`) — 4-part tutorial + scripts running HuggingFace Llama-2-7B and Stable Diffusion under JAX via torchax.
 - [xprof](codebases/xprof.md) — commit `2e33c01` — OpenXLA profiler + TensorBoard plugin; canonical metric vocabulary and profile-capture surface for every experiment.
 - [xprof-mcp](codebases/xprof-mcp.md) — commit `9970d65` — MCP server exposing 18 tools for agent-driven profile analysis; wraps a local xprof HTTP server and `.xplane.pb` files.

@@ -69,6 +69,10 @@ None measurable. Run aborted before profile capture; compile never completed the
 - The fallback in our `tokamax_attention_fn` catches this and calls our `_xla_fallback_fwd`, which is a plain einsum + mask + softmax path — functional but ~20–30× slower than splash for sliding-window at seq=1024.
 - In practice: half the layers per step at 20–30× slowdown is dominant; end-to-end would be multiples slower than exp 25 baseline.
 
+## Profile
+
+No trace — run killed before step 0 completed. First attempt crashed on absl flag parsing; second attempt hit `NotImplementedError: mask.k_start is not supported` (tokamax mosaic_tpu rejects sliding-window) and fell back to slow XLA for 21/42 layers, defeating the purpose; killed.
+
 ## Verdict
 
 **PARKED.** Tokamax's mosaic_tpu kernel is not a drop-in replacement for our splash wiring on Gemma 4's hybrid attention. Not an experiment that can be salvaged at reasonable effort:

@@ -22,6 +22,14 @@ bf16 CE should work the same at seq=2048 as at seq=1024. Matrix-fill data point.
 
 Confirmed. TPS 31,960 — just below exp 12's 32,340 on the same total tokens/step (8192 for both: 2×1024 at b=2 and 1×2048 at b=1). seq=1024 b=2 edges seq=2048 b=1 by ~1.2 %.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp14-splash-bf16ce-seq2048](http://localhost:8791/?run=2026-04-23-gemma4-exp14-splash-bf16ce-seq2048) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp14-splash-bf16ce-seq2048`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp14-splash-bf16ce-seq2048/`](../../../raw/profiles/2026-04-23-gemma4-exp14-splash-bf16ce-seq2048/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash + bf16 CE at seq=2048 b=1; saves ~2.5 % step time vs exp 9's fp32 CE.
+
 ## Verdict
 
 **SUPPORTED.** Merged to trunk. Long-seq users get bf16 CE for free.
@@ -35,3 +43,5 @@ Confirmed. TPS 31,960 — just below exp 12's 32,340 on the same total tokens/st
 ## Sources
 
 - `RESULTS.tsv` row `exp14`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp14-splash-bf16ce-seq2048/` — xprof run `2026-04-23-gemma4-exp14-splash-bf16ce-seq2048` at http://localhost:8791/?run=2026-04-23-gemma4-exp14-splash-bf16ce-seq2048
+

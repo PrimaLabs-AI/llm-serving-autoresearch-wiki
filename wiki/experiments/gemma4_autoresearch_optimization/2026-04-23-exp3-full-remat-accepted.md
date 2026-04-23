@@ -76,10 +76,11 @@ Baseline: [baseline-seq1024 from 2026-04-23](OBSERVATIONS.md#baseline-torchax--g
 
 ## Profile
 
-- Path: `raw/profiles/2026-04-23-gemma4-exp3-full-remat/` — xprof trace, steps 10–12 at seq=1024.
-- Captured steps: 10, 11, 12 (`--profile_steps 10 11 12`).
-- Contents: xplane.pb + trace.json.gz (TB profiler layout).
-- xprof symlink: `gemma4_exp3_full_remat_20260423`.
+- **xprof browser URL**: [2026-04-23-gemma4-exp3-full-remat](http://localhost:8791/?run=2026-04-23-gemma4-exp3-full-remat) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp3-full-remat`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp3-full-remat/`](../../../raw/profiles/2026-04-23-gemma4-exp3-full-remat/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 5, 6, 7
+- **What's inside**: xprof trace — full forward remat via `jax.checkpoint`; memory profile shows −29 % peak HBM vs baseline.
 
 ## Mechanism
 

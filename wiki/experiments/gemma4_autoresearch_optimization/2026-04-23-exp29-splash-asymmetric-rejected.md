@@ -46,7 +46,11 @@ Compile is a bit longer because the splash kernel is specialized for the new (bl
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp29-splash-asymmetric/`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp29-splash-asymmetric](http://localhost:8791/?run=2026-04-23-gemma4-exp29-splash-asymmetric) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp29-splash-asymmetric`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp29-splash-asymmetric/`](../../../raw/profiles/2026-04-23-gemma4-exp29-splash-asymmetric/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash block_q=1024, block_kv=512; refuted, −0.37 %.
 
 ## Mechanism
 

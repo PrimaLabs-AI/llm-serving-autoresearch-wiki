@@ -70,9 +70,11 @@ Raw per-step (steps 2–19): 400.0–401.6 ms, σ < 0.5 ms — extremely tight. 
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp33-pallas-rmsnorm/plugins/profile/2026_04_23_09_13_54/` (captured steps 10, 11, 12; `t1v-n-70cf3ce3-w-0.xplane.pb` + `.trace.json.gz`). Uploaded mirror at `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-exp33-pallas-rmsnorm/`.
-
-XProf MCP was unavailable at writeup time (server read-timeout on queries; restart not in scope). The op-diff "`loop fusion` ms before vs after" comparison listed as a deliverable is therefore not populated in this page — we describe the mechanism below from step-time first-principles and the profile is preserved for a future xprof-on pass.
+- **xprof browser URL**: [2026-04-23-gemma4-exp33-pallas-rmsnorm](http://localhost:8791/?run=2026-04-23-gemma4-exp33-pallas-rmsnorm) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp33-pallas-rmsnorm`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp33-pallas-rmsnorm/`](../../../raw/profiles/2026-04-23-gemma4-exp33-pallas-rmsnorm/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — hand-written Pallas RMSNorm + custom_vjp replacing Gemma4RMSNorm (~250 sites/step); −8.1 % via fusion-boundary tax (Pallas custom-calls prevent XLA from fusing norms with neighboring matmuls). Also uploaded to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-exp33-pallas-rmsnorm/` for direct xprof UI access.
 
 ## Mechanism — why it regressed
 

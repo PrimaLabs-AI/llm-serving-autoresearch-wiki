@@ -57,7 +57,11 @@ Origin: [xprof-mcp TPU optimization guide §4.6/§5](../../sources/2026-xprof-mc
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp5-selective-remat/`; xprof symlink `gemma4_exp5_selective_remat_20260423`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp5-selective-remat](http://localhost:8791/?run=2026-04-23-gemma4-exp5-selective-remat) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp5-selective-remat`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp5-selective-remat/`](../../../raw/profiles/2026-04-23-gemma4-exp5-selective-remat/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 5, 6, 7
+- **What's inside**: xprof trace — selective remat (`checkpoint_dots_with_no_batch_dims`); peak HBM 62 %, +8.7 % step cost.
 
 ## Mechanism
 

@@ -39,7 +39,11 @@ verdict: supported
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp6-selective-batch2/`; xprof symlink `gemma4_exp6_selective_batch2_20260423`. Captured steps 10, 11, 12.
+- **xprof browser URL**: [2026-04-23-gemma4-exp6-selective-batch2](http://localhost:8791/?run=2026-04-23-gemma4-exp6-selective-batch2) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp6-selective-batch2`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp6-selective-batch2/`](../../../raw/profiles/2026-04-23-gemma4-exp6-selective-batch2/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 5, 6, 7
+- **What's inside**: xprof trace — selective remat + batch=2; first +TPS experiment.
 
 ## Mechanism
 

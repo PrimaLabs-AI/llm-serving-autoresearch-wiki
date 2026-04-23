@@ -34,6 +34,14 @@ Ran [exp 8](2026-04-23-exp8-splash-attention-accepted.md)'s splash kernel stack 
 
 +1.9 % TPS vs baseline-seq1024 (30,570). Strict upgrade over the NaN-broken baseline-seq2048.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp9-splash-seq2048](http://localhost:8791/?run=2026-04-23-gemma4-exp9-splash-seq2048) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp9-splash-seq2048`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp9-splash-seq2048/`](../../../raw/profiles/2026-04-23-gemma4-exp9-splash-seq2048/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash at seq=2048 b=1; NaN bug fixed, clean loss descent.
+
 ## Verdict
 
 **SUPPORTED.** Splash fixes the NaN and gives real throughput at seq=2048. Merged to trunk.

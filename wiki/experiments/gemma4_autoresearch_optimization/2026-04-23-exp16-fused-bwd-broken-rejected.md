@@ -26,6 +26,14 @@ The dq block-size parameters must be **omitted** (not set) when `use_fused_bwd_k
 
 The XLA fallback number (32,027 TPS, 255.8 ms) is **within 2 ms** of the real splash path at this config. XLA's attention at seq=1024 is competitive with splash — the splash win scales with seq² and kicks in at longer sequences.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp16-splash-fused-bwd](http://localhost:8791/?run=2026-04-23-gemma4-exp16-splash-fused-bwd) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp16-splash-fused-bwd`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp16-splash-fused-bwd/`](../../../raw/profiles/2026-04-23-gemma4-exp16-splash-fused-bwd/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — `use_fused_bwd_kernel=True` with stale dq block params; splash errored + XLA fallback fired for every attention layer. This profile measures XLA attention, not splash-fused-bwd — interesting side-finding.
+
 ## Verdict
 
 **REJECTED / INVALID.** This run measured the wrong kernel. The correct config landed in [exp 17](2026-04-23-exp17-splash-fused-bwd-accepted.md) with the dq params stripped. Not merged.
@@ -39,3 +47,5 @@ The XLA fallback number (32,027 TPS, 255.8 ms) is **within 2 ms** of the real sp
 
 - `RESULTS.tsv` row `exp16`.
 - Commit `bcaef89`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp16-splash-fused-bwd/` — xprof run `2026-04-23-gemma4-exp16-splash-fused-bwd` at http://localhost:8791/?run=2026-04-23-gemma4-exp16-splash-fused-bwd
+

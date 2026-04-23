@@ -22,6 +22,14 @@ pallas-forge advertises a "Fused RMSNorm + Residual" kernel with 3.44× speedup 
 
 pallas-forge exposes a forward kernel but not a backward. For a training workload, forward-only is unusable — the jit trace fails at `jax.value_and_grad` time.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp20-pallas-rmsnorm](http://localhost:8791/?run=2026-04-23-gemma4-exp20-pallas-rmsnorm) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp20-pallas-rmsnorm`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp20-pallas-rmsnorm/`](../../../raw/profiles/2026-04-23-gemma4-exp20-pallas-rmsnorm/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: none (run did not reach training steps)
+- **What's inside**: No runtime trace — run crashed on backward trace (`Linearization failed to produce known values`) because pallas-forge RMSNorm lacks `custom_vjp`. Directory holds the forward-compile HLO dump.
+
 ## Verdict
 
 **REJECTED / INVALID.** Not merged. The kernel itself may be correct; it just can't be used for training without a hand-rolled backward. That's what [exp 33](2026-04-23-exp33-pallas-rmsnorm-rejected.md) later delivered (and refuted for a different reason — XLA was already fusing RMSNorm with neighbor matmuls).
@@ -36,3 +44,5 @@ pallas-forge exposes a forward kernel but not a backward. For a training workloa
 
 - `RESULTS.tsv` row `exp20`.
 - Commits `1b0276f` (integrate), `eb4db37` (crash on bwd).
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp20-pallas-rmsnorm/` — xprof run `2026-04-23-gemma4-exp20-pallas-rmsnorm` at http://localhost:8791/?run=2026-04-23-gemma4-exp20-pallas-rmsnorm
+

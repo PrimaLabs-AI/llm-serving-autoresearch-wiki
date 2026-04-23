@@ -22,6 +22,14 @@ With splash attention and larger batch, scheduling has more work to hide collect
 
 Refuted — the mechanism is the same: scheduler reorder breaks compute-fusion locality, convolution and loop fusion bytes blow up, the modest collective-overlap savings don't compensate.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp13-splash-bf16ce-async-flags](http://localhost:8791/?run=2026-04-23-gemma4-exp13-splash-bf16ce-async-flags) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp13-splash-bf16ce-async-flags`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp13-splash-bf16ce-async-flags/`](../../../raw/profiles/2026-04-23-gemma4-exp13-splash-bf16ce-async-flags/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — async-collective bundle re-tested on splash+bf16 CE; confirms +12.7 % step regression pattern.
+
 ## Verdict
 
 **REJECTED.** Permanently park the `async_collective_fusion*` flags at this scale. Exp 30 + 31 later confirmed `latency_hiding_scheduler` and `overlap_compute_collective_tc` are not the culprits in this bundle.
@@ -35,3 +43,5 @@ Refuted — the mechanism is the same: scheduler reorder breaks compute-fusion l
 ## Sources
 
 - `RESULTS.tsv` row `exp13`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp13-splash-bf16ce-async-flags/` — xprof run `2026-04-23-gemma4-exp13-splash-bf16ce-async-flags` at http://localhost:8791/?run=2026-04-23-gemma4-exp13-splash-bf16ce-async-flags
+

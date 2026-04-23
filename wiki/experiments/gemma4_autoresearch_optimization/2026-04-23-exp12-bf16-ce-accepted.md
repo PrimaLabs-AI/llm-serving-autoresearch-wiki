@@ -27,6 +27,14 @@ Gemma 4's `final_logit_softcapping = 30.0` bounds logits to ±30 before the LM h
 | Peak HBM | 25.85 GiB | 24.79 GiB | −4.1 % |
 | Loss | 3.82 → 1.55 | match | identical |
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp12-splash-b2-bf16ce](http://localhost:8791/?run=2026-04-23-gemma4-exp12-splash-b2-bf16ce) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp12-splash-b2-bf16ce`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp12-splash-b2-bf16ce/`](../../../raw/profiles/2026-04-23-gemma4-exp12-splash-b2-bf16ce/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash + bf16 CE at seq=1024 b=2; +5.8 % TPS over baseline.
+
 ## Verdict
 
 **SUPPORTED.** Stacks cleanly with splash, free memory, no correctness impact. Merged.
@@ -40,3 +48,5 @@ Gemma 4's `final_logit_softcapping = 30.0` bounds logits to ±30 before the LM h
 ## Sources
 
 - `RESULTS.tsv` row `exp12`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp12-splash-b2-bf16ce/` — xprof run `2026-04-23-gemma4-exp12-splash-b2-bf16ce` at http://localhost:8791/?run=2026-04-23-gemma4-exp12-splash-b2-bf16ce
+

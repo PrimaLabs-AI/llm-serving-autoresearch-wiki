@@ -45,7 +45,11 @@ Per-step times (steps 2–19): min 253.5 ms, max 254.6 ms, σ < 0.4 ms. Very tig
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp28-seq2048-exp25config/`. Captured steps 10, 11, 12 via `jax.profiler.start_trace` / `stop_trace`. Both messages appear in `/tmp/gemma4_exp28.log`.
+- **xprof browser URL**: [2026-04-23-gemma4-exp28-seq2048-exp25config](http://localhost:8791/?run=2026-04-23-gemma4-exp28-seq2048-exp25config) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp28-seq2048-exp25config`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp28-seq2048-exp25config/`](../../../raw/profiles/2026-04-23-gemma4-exp28-seq2048-exp25config/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — exp 25 stack at seq=2048 b=1; +0.9 % over exp 14.
 
 ## Mechanism
 

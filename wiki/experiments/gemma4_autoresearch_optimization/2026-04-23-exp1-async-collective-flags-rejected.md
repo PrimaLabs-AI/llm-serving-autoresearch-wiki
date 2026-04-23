@@ -70,8 +70,11 @@ Baseline: seq=1024 run of [2026-04-22 baseline](2026-04-22-baseline.md) (20-step
 
 ## Profile
 
-Path: `raw/profiles/2026-04-23-gemma4-exp1-async-collectives/` — xprof trace, steps 10–12 at seq=1024 with the 5-flag LIBTPU bundle. Symlinked into xprof as `gemma4_exp1_async_collectives_20260423`.
-Contents: standard TB-profiler plugin layout (xplane.pb + trace.json.gz). Baseline counterpart: `raw/profiles/2026-04-23-gemma4-loss-confirm/` (symlinked as `gemma4_baseline_seq1024_20260423`).
+- **xprof browser URL**: [2026-04-23-gemma4-exp1-async-collectives](http://localhost:8791/?run=2026-04-23-gemma4-exp1-async-collectives) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp1-async-collectives`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp1-async-collectives/`](../../../raw/profiles/2026-04-23-gemma4-exp1-async-collectives/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — async-collective XLA flag bundle; HLO-op diff vs baseline shows the compute-fusion bytes explosion.
 
 ## Observations
 

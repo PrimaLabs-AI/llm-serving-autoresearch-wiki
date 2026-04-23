@@ -22,6 +22,14 @@ Smaller tiles → less VMEM per tile → more tiles in flight → better pipelin
 
 Mirror of exp 29's later finding: splash's softmax accumulator is sequential across KV tiles. Smaller tiles mean more reload cycles with no concurrency benefit. MXU also prefers larger tiles (fewer dispatch overheads) up to VMEM limit.
 
+## Profile
+
+- **xprof browser URL**: [2026-04-23-gemma4-exp19-splash-block256](http://localhost:8791/?run=2026-04-23-gemma4-exp19-splash-block256) — opens the interactive trace viewer for this run.
+- **Run name** (as listed by `mcp__xprof__list_runs`): `2026-04-23-gemma4-exp19-splash-block256`
+- **On-disk directory**: [`raw/profiles/2026-04-23-gemma4-exp19-splash-block256/`](../../../raw/profiles/2026-04-23-gemma4-exp19-splash-block256/) (gitignored; relative link click-throughs open the trace folder locally)
+- **Steps captured**: 10, 11, 12
+- **What's inside**: xprof trace — splash `block_q=block_kv=256`; smaller tiles regressed (softmax accumulator is sequential across KV tiles).
+
 ## Verdict
 
 **REJECTED.** Not merged. The correct direction turned out to be **larger** blocks (exp 25: `block=1024`), not smaller.
@@ -35,3 +43,5 @@ Mirror of exp 29's later finding: splash's softmax accumulator is sequential acr
 
 - `RESULTS.tsv` row `exp19`.
 - Commit `ca80c11`.
+- Profile directory: `raw/profiles/2026-04-23-gemma4-exp19-splash-block256/` — xprof run `2026-04-23-gemma4-exp19-splash-block256` at http://localhost:8791/?run=2026-04-23-gemma4-exp19-splash-block256
+
