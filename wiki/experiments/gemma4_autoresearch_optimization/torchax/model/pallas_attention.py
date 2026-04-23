@@ -101,6 +101,10 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
     # OMITTED (splash raises `ValueError: Block sizes for dq kernel are
     # not needed with a fused kernel` if they're set, which broke exp 16
     # and triggered our XLA fallback for every layer).
+    # Exp 24 — switch Q layout to SEQ_MINOR. tokamax's pallas_mosaic_tpu
+    # exposes q_layout/k_layout/v_layout as autotune knobs; HEAD_DIM_MINOR
+    # is the default but SEQ_MINOR can improve HBM locality when the batch
+    # dimension is being streamed.
     block_sizes = sa_kernel.BlockSizes(
         block_q=block_q,
         block_kv=block_kv,
@@ -111,6 +115,9 @@ def _build_splash_kernel(seq_len: int, num_q_heads: int, sliding_window: int | N
         block_kv_dkv_compute=min(512, seq_len),
         # block_q_dq / block_kv_dq intentionally omitted — see note above.
         use_fused_bwd_kernel=True,
+        q_layout=sa_kernel.QKVLayout.SEQ_MINOR,
+        k_layout=sa_kernel.QKVLayout.SEQ_MINOR,
+        v_layout=sa_kernel.QKVLayout.SEQ_MINOR,
     )
 
     # Per-head mask. MHA mode requires exactly `num_q_heads` masks (splash
