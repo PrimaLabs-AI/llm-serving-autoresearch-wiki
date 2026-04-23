@@ -178,6 +178,8 @@
   },
   "active": "81b05cd2d3f4645c",
   "lastOpenFiles": [
+    "wiki/experiments/gemma4_autoresearch_optimization/torchax/model/__pycache__/pallas_rmsnorm.cpython-313.pyc",
+    "raw/profiles/2026-04-23-gemma4-exp20-pallas-rmsnorm",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/train.py.tmp.106074.1776925424948",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/model/pallas_rmsnorm.py",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/model/pallas_rmsnorm.py.tmp.106074.1776925413869",
@@ -187,8 +189,6 @@
     "raw/profiles/2026-04-23-gemma4-exp19-splash-block256/plugins/profile",
     "raw/profiles/2026-04-23-gemma4-exp19-splash-block256/plugins",
     "raw/profiles/2026-04-23-gemma4-exp19-splash-block256",
-    "wiki/experiments/gemma4_autoresearch_optimization/torchax/model/pallas_attention.py.tmp.106074.1776923896290",
-    "raw/profiles/2026-04-23-gemma4-exp18-fused-bwd-batch3/plugins/profile/2026_04_23_05_57_35/t1v-n-70cf3ce3-w-0.trace.json.gz",
     "wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp8-splash-attention.md",
     "wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp7-selective-batch3.md",
     "wiki/experiments/gemma4_autoresearch_optimization/2026-04-23-exp6-selective-batch2.md",
