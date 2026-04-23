@@ -62,6 +62,7 @@ Then ask the agent to ingest it — see `SCHEMA.md` → `INGEST-CODEBASE`.
 - [scaling-book](raw/code/scaling-book) — "How To Scale Your Model": TPU scaling / parallelism reference (JAX ML / Google DeepMind)
 - [autoresearch](raw/code/autoresearch) — Karpathy's autoresearch reference implementation (the methodology this wiki adapts to TPU perf)
 - [learning-machine](raw/code/learning-machine) — Qi Huang's JAX/ML experiments repo; the `jax-huggingface/` subfolder is ingested as the [jax-huggingface](wiki/codebases/jax-huggingface.md) codebase
+- [pallas-forge](raw/code/pallas-forge) — auto-tuning framework for Pallas kernels on TPU (block-size sweeps, roofline + xprof capture); ships fused RMSNorm+residual, tiled matmul, fused SwiGLU reference kernels
 
 ## Authoritative contract
 

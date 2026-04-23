@@ -22,3 +22,6 @@
 [submodule "raw/code/learning-machine"]
 	path = raw/code/learning-machine
 	url = https://github.com/qihqi/learning_machine
+[submodule "raw/code/pallas-forge"]
+	path = raw/code/pallas-forge
+	url = https://github.com/linhkid/pallas-forge
