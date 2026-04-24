@@ -1,5 +1,5 @@
 # TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-23 — 178 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 3 analyses + 6 analysis subpages)*
+*Last updated: 2026-04-24 — 179 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 4 analyses + 6 analysis subpages)*
 
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
@@ -234,7 +234,8 @@
 ## Observations (0)
 *None yet.*
 
-## Analyses (3)
+## Analyses (4)
 - [2026-04-23 Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md) — repo-by-repo catalog of ~200 Pallas kernels across ~30 repos, with source-code refs, stability, perf claims, use cases, and callers. Cross-cutting functional-category tables + 6 subpages ([§1 JAX+tokamax](analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md), [§2 AI-Hypercomputer](analyses/pallas-kernel-directory/02-ai-hypercomputer.md), [§3 Inference engines](analyses/pallas-kernel-directory/03-inference-engines.md), [§4 Research labs](analyses/pallas-kernel-directory/04-research-labs.md), [§5 Frameworks & quant](analyses/pallas-kernel-directory/05-frameworks-quant.md), [§6 Community](analyses/pallas-kernel-directory/06-community-research.md)). Confirms Zig-Zag ring attention absent everywhere; identifies AlphaFold3 @ v3.0.1 fused GLU and apple/axlearn SSM kernels as the key novel content.
 - [2026-04-23 Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — web-research inventory of every public source of Pallas kernel code. Identifies 5 top ingest candidates (maxtext, tpu-inference, maxdiffusion, axlearn, sglang-jax) and updates 3 open hypothesis candidates on the Ultra-Scale Playbook page with reference implementations found in the wild.
-- [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).
+- [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33, torchax stack)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment torchax-stack loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).
+- [2026-04-24 Gemma 4 E4B — JAX-stack ceiling + process retrospective (exp 34–42)](analyses/2026-04-24-gemma4-jax-ceiling-and-process-retrospective.md) — JAX-stack analog. Best = exp 36 (34,614 TPS / 23.05 % MFU, **+3.7 % over torchax session-best**). Explains why JAX beats torchax on same hardware (compile-time HBM ~1.25 GiB lower; no torchax dispatch overhead). Includes cross-stack generalizable lessons + **process retrospective** with concrete `program.md` / `SCHEMA.md` rule additions.
