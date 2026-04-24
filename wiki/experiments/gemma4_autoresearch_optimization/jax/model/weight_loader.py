@@ -123,6 +123,7 @@ def load_hf_weights(
     *,
     dtype: jnp.dtype | None = None,
     weights_dtype: jnp.dtype | None = None,
+    shardings: dict | None = None,
     verbose: bool = False,
 ) -> dict[str, int]:
     """Copy HF weights into the NNX param tree in place.
@@ -131,6 +132,12 @@ def load_hf_weights(
     e.g. fp32 for master-weights AMP, bf16 for legacy. If both
     ``weights_dtype`` and ``dtype`` are given, ``weights_dtype`` wins.
     If neither is given, the tensor's native HF dtype is preserved.
+
+    ``shardings`` (exp 52+) is an optional ``{nnx_path: NamedSharding}``
+    lookup. When provided, each loaded tensor is ``jax.device_put``'d
+    with the matching sharding so that fp32-master tensors never
+    materialize fully on a single device (PLE embed is 10.5 GiB in fp32
+    — exceeds per-chip HBM headroom on v6e-4 if landed replicated).
 
     Returns a small report dict with counts of assigned / skipped /
     missing params."""
@@ -174,23 +181,69 @@ def load_hf_weights(
                 missing_names.append(name)
             continue
         # Convert torch -> jnp. torch bf16 doesn't round-trip through numpy
-        # (no native bf16 dtype in numpy), so cast to fp32 first, convert,
-        # then cast to the target dtype.
+        # (no native bf16 dtype in numpy), so cast to fp32 first on host
+        # (CPU RAM), then either (a) scatter-shard directly into per-device
+        # HBM via jax.device_put(np_array, sharding) — never materializing
+        # the full fp32 tensor on any single device — or (b) fall back to
+        # the old un-sharded jnp.asarray path for callers that don't pass
+        # a sharding plan.
         t = tensor.detach()
         import torch as _torch
+        import numpy as _np
+
+        # Build a host-side numpy array in either fp32 (for HF bf16 shards,
+        # which numpy can't express natively) or the tensor's native dtype.
         if t.dtype == _torch.bfloat16:
-            arr = jnp.asarray(t.to(_torch.float32).numpy())
-            arr = arr.astype(jnp.bfloat16)
+            np_arr = t.to(_torch.float32).numpy()  # host fp32
+            host_dtype = "fp32_from_bf16"
         else:
-            arr = jnp.asarray(t.numpy())
-        if target_dtype is not None:
-            arr = arr.astype(target_dtype)
-        # Expected shape check.
-        if tuple(arr.shape) != tuple(param.value.shape):
-            raise ValueError(
-                f"Shape mismatch for {name!r}: HF={tuple(arr.shape)} "
-                f"vs NNX={tuple(param.value.shape)}"
-            )
+            np_arr = t.numpy()
+            host_dtype = str(t.dtype)
+
+        sh = shardings.get(name) if shardings is not None else None
+
+        if sh is not None:
+            # Scatter-shard-first path. Cast on host (cheap) so that
+            # target_dtype matches the per-device shard dtype exactly — no
+            # full-tensor device fp32 materialization.
+            if target_dtype is not None:
+                # Cast on host using numpy for fp32 / jnp for bf16.
+                if target_dtype == jnp.bfloat16:
+                    # Go through jax.numpy on host to get bf16 (numpy has no
+                    # native bf16). Allocate a small CPU-device array then
+                    # move it to the sharding.
+                    # jax.device_put on a numpy array with a NamedSharding
+                    # scatters by sharding layout, so per-device bf16 is
+                    # materialized directly.
+                    pass  # numpy fp32/... stays; jax will cast on put below
+                elif target_dtype == jnp.float32:
+                    if np_arr.dtype != _np.float32:
+                        np_arr = np_arr.astype(_np.float32)
+                else:
+                    np_arr = np_arr.astype(target_dtype)  # trust np.dtype path
+            # Shape check on host.
+            if tuple(np_arr.shape) != tuple(param.value.shape):
+                raise ValueError(
+                    f"Shape mismatch for {name!r}: HF={tuple(np_arr.shape)} "
+                    f"vs NNX={tuple(param.value.shape)}"
+                )
+            arr = jax.device_put(np_arr, sh)
+            if target_dtype is not None and arr.dtype != target_dtype:
+                # e.g. bf16 target from a fp32 host buffer: astype runs per-
+                # shard on-device (cheap: shard is ~1/fsdp of the full size).
+                arr = arr.astype(target_dtype)
+        else:
+            # Legacy un-sharded path (replicated on device 0 at first).
+            arr = jnp.asarray(np_arr)
+            if t.dtype == _torch.bfloat16:
+                arr = arr.astype(jnp.bfloat16)
+            if target_dtype is not None:
+                arr = arr.astype(target_dtype)
+            if tuple(arr.shape) != tuple(param.value.shape):
+                raise ValueError(
+                    f"Shape mismatch for {name!r}: HF={tuple(arr.shape)} "
+                    f"vs NNX={tuple(param.value.shape)}"
+                )
         param.value = arr
         stats["assigned"] += 1
 

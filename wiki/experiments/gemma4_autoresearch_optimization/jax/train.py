@@ -184,13 +184,39 @@ def main(argv: Optional[list] = None) -> int:
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
 
     # Build the NNX model with random init (will be overwritten by loader).
+    # Under fp32-master, init directly into fp32 would put the full
+    # (vocab=262144 × n_layers=42 × 256) fp32 PLE embedding — ~11 GiB — on
+    # a single device before sharding can apply, blowing past the 31 GiB
+    # per-chip HBM at 3.55 GiB free (model init runs inline on device 0
+    # for nnx). Fix: init the *storage* in the compute_dtype (bf16) —
+    # which is at most 5.25 GiB for the biggest tensor and fits — then
+    # apply sharding, then have the weight loader overwrite each param
+    # value with a fp32 array that's scatter-sharded directly (see
+    # ``shardings=`` kwarg below). Post-load, params are fp32 + sharded.
     rngs = nnx.Rngs(args.seed)
+    _init_weights_dtype = compute_dtype  # always bf16 for init-time storage
     model = Gemma4ForCausalLM(
         text_cfg,
-        weights_dtype=weights_dtype,
+        weights_dtype=_init_weights_dtype,
         compute_dtype=compute_dtype,
         rngs=rngs,
     )
+    # If we're really fp32-master, fix up the per-module weights_dtype
+    # metadata so any later introspection sees the true target. (The
+    # running param values will become fp32 after the loader pass.)
+    if weights_dtype != _init_weights_dtype:
+        def _fixup_dtype_meta(m):
+            for name in ("weights_dtype",):
+                if hasattr(m, name):
+                    setattr(m, name, weights_dtype)
+            for _, v in vars(m).items():
+                if isinstance(v, nnx.Module):
+                    _fixup_dtype_meta(v)
+                elif isinstance(v, list):
+                    for elem in v:
+                        if isinstance(elem, nnx.Module):
+                            _fixup_dtype_meta(elem)
+        _fixup_dtype_meta(model)
 
     # Pre-build splash kernels (one per (sliding_window, head_dim) combo).
     # This materializes MaskInfo at top-level so the lru_cache entries aren't
@@ -217,21 +243,31 @@ def main(argv: Optional[list] = None) -> int:
         ) if _os.environ.get(k) is not None}
         if _splash_env_snapshot:
             print(f"[attn] splash overrides: {_splash_env_snapshot}")
-    stats = load_hf_weights(model, args.model_id, weights_dtype=weights_dtype, verbose=True)
-    print(f"[load] weights: assigned={stats['assigned']} "
-          f"skipped_modality={stats['skipped_modality']} "
-          f"skipped_shared_kv={stats['skipped_shared_kv']} "
-          f"missing={stats['missing']} "
-          f"(missing should be 0 or 2 — vision/audio embed connectors)")
-    print(f"[load] done in {time.perf_counter() - t0:.1f}s")
-
-    # Sharding ---------------------------------------------------------------
+    # Sharding first — exp 52+ reorder. Plan is shape-based so it can run
+    # on the still-bf16-init'd params; applying it ahead of the loader means
+    # fp32-master tensors are scatter-sharded at load time and never
+    # materialize the full [vocab, L*D_ple] fp32 tensor (~11 GiB) on any
+    # single device.
     plan = get_param_sharding(model, mesh)
     for note in plan.notes:
         print(f"[sharding] {note}")
     counts = {k: len(v) for k, v in plan.buckets.items()}
     print(f"[sharding] bucket counts: {counts}")
     apply_sharding(model, plan)
+
+    # Weight load (with sharding lookup so each param lands sharded).
+    stats = load_hf_weights(
+        model, args.model_id,
+        weights_dtype=weights_dtype,
+        shardings=plan.shardings,
+        verbose=True,
+    )
+    print(f"[load] weights: assigned={stats['assigned']} "
+          f"skipped_modality={stats['skipped_modality']} "
+          f"skipped_shared_kv={stats['skipped_shared_kv']} "
+          f"missing={stats['missing']} "
+          f"(missing should be 0 or 2 — vision/audio embed connectors)")
+    print(f"[load] done in {time.perf_counter() - t0:.1f}s")
 
     # Split the NNX model into (graphdef, state) so jit sees a pytree.
     # graphdef is static; state carries the Param values.

@@ -231,6 +231,15 @@ def _rms_norm(x, weight, eps: float, with_scale: bool = True):
     return normed.astype(in_dtype)
 
 
+def _matmul_amp(x: jax.Array, w: jax.Array) -> jax.Array:
+    """Helper: under fp32-master + bf16-compute AMP, downcast w to x's dtype
+    so the dot runs in compute_dtype (bf16) and the output keeps that dtype.
+    Matches modeling_gemma4.py's Linear forward contract."""
+    if w.dtype != x.dtype:
+        w = w.astype(x.dtype)
+    return x @ w.T
+
+
 def _attention_non_shared(
     hidden_states: jax.Array,       # (B, T, hidden)
     position_embeddings: tuple[jax.Array, jax.Array],
@@ -250,14 +259,14 @@ def _attention_non_shared(
     B, T, _ = hidden_states.shape
     cos, sin = position_embeddings
 
-    q = hidden_states @ weights["q_proj_w"].T
+    q = _matmul_amp(hidden_states, weights["q_proj_w"])
     q = q.reshape(B, T, num_heads, head_dim)
     q = _rms_norm(q, weights["q_norm_w"], rms_eps, with_scale=True)
     q = apply_rotary_pos_emb(q, cos, sin, unsqueeze_dim=2)
     q = jnp.transpose(q, (0, 2, 1, 3))
 
-    k = hidden_states @ weights["k_proj_w"].T
-    v = hidden_states @ weights["v_proj_w"].T
+    k = _matmul_amp(hidden_states, weights["k_proj_w"])
+    v = _matmul_amp(hidden_states, weights["v_proj_w"])
     k = k.reshape(B, T, num_kv_heads, head_dim)
     v = v.reshape(B, T, num_kv_heads, head_dim)
     k = _rms_norm(k, weights["k_norm_w"], rms_eps, with_scale=True)
@@ -278,7 +287,7 @@ def _attention_non_shared(
         )
 
     attn_out = attn_out.reshape(B, T, num_heads * head_dim)
-    attn_out = attn_out @ weights["o_proj_w"].T
+    attn_out = _matmul_amp(attn_out, weights["o_proj_w"])
     return attn_out, k, v
 
 
@@ -303,7 +312,7 @@ def _attention_shared(
     B, T, _ = hidden_states.shape
     cos, sin = position_embeddings
 
-    q = hidden_states @ weights["q_proj_w"].T
+    q = _matmul_amp(hidden_states, weights["q_proj_w"])
     q = q.reshape(B, T, num_heads, head_dim)
     q = _rms_norm(q, weights["q_norm_w"], rms_eps, with_scale=True)
     q = apply_rotary_pos_emb(q, cos, sin, unsqueeze_dim=2)
@@ -321,7 +330,7 @@ def _attention_shared(
         )
 
     attn_out = attn_out.reshape(B, T, num_heads * head_dim)
-    attn_out = attn_out @ weights["o_proj_w"].T
+    attn_out = _matmul_amp(attn_out, weights["o_proj_w"])
     return attn_out
 
 
@@ -337,23 +346,25 @@ def _mlp_and_ple(
     ``hidden_states`` is the post-attention residual sum."""
     residual = hidden_states
     x = _rms_norm(hidden_states, weights["pre_feedforward_layernorm_w"], rms_eps)
-    gate = x @ weights["mlp_gate_w"].T
-    up = x @ weights["mlp_up_w"].T
+    gate = _matmul_amp(x, weights["mlp_gate_w"])
+    up = _matmul_amp(x, weights["mlp_up_w"])
     x = _gelu_pytorch_tanh(gate) * up
-    x = x @ weights["mlp_down_w"].T
+    x = _matmul_amp(x, weights["mlp_down_w"])
     x = _rms_norm(x, weights["post_feedforward_layernorm_w"], rms_eps)
     hidden_states = residual + x
 
     residual = hidden_states
-    x = hidden_states @ weights["ple_gate_w"].T
+    x = _matmul_amp(hidden_states, weights["ple_gate_w"])
     x = _gelu_pytorch_tanh(x)
     if per_layer_input is not None:
         x = x * per_layer_input
-    x = x @ weights["ple_proj_w"].T
+    x = _matmul_amp(x, weights["ple_proj_w"])
     x = _rms_norm(x, weights["ple_post_norm_w"], rms_eps)
     hidden_states = residual + x
 
-    hidden_states = hidden_states * weights["layer_scalar"]
+    # Cast layer_scalar to the hidden-states dtype so fp32-master doesn't
+    # silently upcast the residual back to fp32 (matches Gemma4TextDecoderLayer).
+    hidden_states = hidden_states * weights["layer_scalar"].astype(hidden_states.dtype)
     return hidden_states
 
 
