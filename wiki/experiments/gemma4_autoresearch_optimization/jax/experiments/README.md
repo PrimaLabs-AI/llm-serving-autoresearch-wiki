@@ -14,15 +14,16 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 ## Current state
 
-**Exp 36** at **34,614 TPS** (seq=1024, batch=3, fsdp=4, bf16, splash) — **+13.9 %** over exp 35 and **+3.7 % over the torchax session-best** ([exp 25, 33,372 TPS](../../torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md)). Step time 355.0 ms/step, peak HBM **27.11 GiB / 31.25 GiB = 86.75 %** (fits comfortably with 4.14 GiB of headroom). The JAX stack now leads both stacks, and it got there without bf16 CE or fused_bwd-specific tuning yet. HLO-op diff vs exp 35 (b=1): splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul `convolution fusion` grew ×2.75 and `loop fusion` ×3.81 — exactly the per-call-overhead amortization mechanism predicted in exp 35's writeup. New bottleneck surfaces at b=3: `loop fusion` (28.1 % of step) and `collective-permute-done` (12.2 %, didn't exist at b=1).
+**Exp 36** remains the JAX-stack best at **34,614 TPS** (seq=1024, batch=3, fsdp=4, bf16, splash) — **+13.9 %** over exp 35 and **+3.7 % over the torchax session-best** ([exp 25, 33,372 TPS](../../torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md)). Step time 355.0 ms/step, peak HBM **27.11 GiB / 31.25 GiB = 86.75 %** (fits comfortably with 4.14 GiB of headroom). HLO-op diff vs exp 35 (b=1): splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul `convolution fusion` grew ×2.75 and `loop fusion` ×3.81 — per-call-overhead amortization mechanism per exp 35's predictions. New bottleneck surfaces at b=3: `loop fusion` (28.1 % of step) and `collective-permute-done` (12.2 %, didn't exist at b=1).
+
+**Exp 37** (bf16 CE env-var gate on top of exp 36) landed flat at **34,629 TPS (+0.04 %, within noise)** — the native-JAX port was already running bf16 CE by construction since exp 34, so the torchax-exp-12-style win was a no-op-by-construction. Durable artifact: the `JAX_CE_DTYPE={bf16,fp32}` gate in `train.py`, useful for regression guards on future LM-head refactors. Peak HBM 27.45 GiB / 87.84 % (unchanged heap, +0.34 GiB stack — free headroom 3.80 GiB).
 
 ## Queued experiments (highest-expected-gain first)
 
-- **exp 37** — **splash + b=3 + bf16 CE** (hand-roll first, tokamax variant second). Frees ~1.5 GiB + trims one pass over logits. Expected +1–3 %. Confidence medium.
-- **exp 38** — **collective-permute-done investigation**. 12.2 % of step at b=3 is a huge new bucket; `in_shardings` / `out_shardings` audit might reclaim half. Expected +5–6 %. Confidence medium.
+- **exp 38** — **collective-permute-done investigation**. 12.1 % of step time at b=3 (549 ms/3-step); `in_shardings` / `out_shardings` audit on the jitted step might reclaim half. Expected +5–6 %. Confidence medium. **Now highest-expected-value open hypothesis.**
 - **exp 39** — **Pallas RMSNorm kernel** (210 calls/step, single-HBM-pass). Expected +3–8 % on `loop fusion`. Effort M.
 - **exp 40** — scan-over-layers. Easier in native JAX. Compile-time win primarily (step 0: 167 s → ~5 s).
-- **exp 41** — b=4. Gated on exp 37 landing; 4.14 GiB free today, b=4 adds ~3.5 GiB.
+- **exp 41** — b=4. Gated on exp 38 landing; 3.80 GiB free today, b=4 adds ~3.5 GiB.
 
 ## See also
 

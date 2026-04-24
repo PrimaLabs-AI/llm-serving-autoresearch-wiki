@@ -1,5 +1,13 @@
 # Log
 
+## [2026-04-23] run-experiment | jax-exp37: bf16 CE env-var gate on top of exp 36 — POTENTIAL (flat, no-op-by-construction)
+
+**Op**: run-experiment.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp37-jax-splash-b3-bf16ce-potential.md`.
+**Pages updated**: `.../jax/experiments/RESULTS.tsv` (exp37 parked row), `.../jax/experiments/OBSERVATIONS.md` (exp 37 block), `.../jax/experiments/README.md` (Current state + queued exp list — exp 37 resolved, exp 38 now highest priority), `.../jax/train.py` (added `JAX_CE_DTYPE` gate).
+**Key result**: **POTENTIAL (flat, within noise)**. TPS 34,614 → **34,629 (+0.04 %)**; step time 355.0 → 354.85 ms; peak HBM 27.11 → 27.45 GiB (heap unchanged at 10.67 GiB, stack +0.34 GiB). Loss matches exp 36 within 0.3 %. Exp 36 remains JAX-stack best at 34,614 TPS.
+**Notes**: The torchax exp 12 analog (+3.0 % TPS / −1.5 GiB HBM) replicated as a **no-op** on the JAX port: the native-JAX port never had the `flat_logits.to(fp32)` upcast that torchax inherited — `forward_loss` in `jax/train.py` has been bf16 log_softmax by construction since the exp-34 port. The durable artifact from exp 37 is the `JAX_CE_DTYPE={bf16,fp32}` env-var gate, which enables controlled A/B on future refactors (e.g., if exp 39 Pallas RMSNorm changes upstream dtype flow). HLO graph bit-identical to exp 36 aside from one dropped implicit-cast in the CE reduction. Profile uploaded to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce/`; xprof at http://localhost:8791/?run=2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce. Next priority: exp 38 (collective-permute-done sharding audit, 12.1 % of step time).
+
 ## [2026-04-23] run-experiment | jax-exp36: splash + batch=3 — new JAX-stack best, BEATS torchax session-best (+3.7 %)
 
 **Op**: run-experiment.

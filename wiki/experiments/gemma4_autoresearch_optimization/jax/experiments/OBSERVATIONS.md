@@ -126,3 +126,45 @@ New bottleneck surfaces visible at b=3 that weren't actionable at b=1:
 - **exp 39 — Pallas RMSNorm kernel**. `loop fusion` is now 28 % of step time; RMSNorm is 5 × 42 = 210 calls/step; single-HBM-pass kernel worth 3–8 %.
 - **exp 40 — scan-over-layers**. Compile-time win (step 0 167 s → ~5 s), not throughput. Still worth doing — iteration speed improvement.
 - **exp 41 — b=4**. With 4.14 GiB HBM free, b=4 adds ~3.5 GiB; may just fit. If exp 37 lands first, b=4 becomes very likely to fit. Defer until after 37.
+
+## exp 37 — bf16 CE env-var gate on top of exp 36 (POTENTIAL, flat — was a no-op-by-construction)
+
+See [2026-04-23-exp37-jax-splash-b3-bf16ce-potential.md](2026-04-23-exp37-jax-splash-b3-bf16ce-potential.md) for the full page.
+
+**Config**:
+- Command diff from exp 36: `+ JAX_CE_DTYPE=bf16` env-var (new, default). No other flag change.
+- Code diff: `jax/train.py` `forward_loss` gains a dtype gate; default path is a no-op vs exp 36.
+- Profile path: [`raw/profiles/2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce/`](../../../../../raw/profiles/2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce/)
+- **Profile browser URL**: http://localhost:8791/?run=2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce
+- GCS mirror: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-jax-exp37-splash-b3-bf16ce/`
+
+**Hypothesis (as filed)**: replicate torchax exp 12's +3.0 % TPS / −1.5 GiB HBM win by dropping a fp32 upcast before `log_softmax`. Precondition assumed: such an upcast exists in the JAX port.
+
+**Pre-run discovery**: reading `train.py`@0c44f60 revealed **no fp32 upcast** in the JAX port's CE path. The comment on line 213 ("bf16 log_softmax to drop the ~4 GiB fp32 logits tensor") had described design intent, not a cast to remove. The native-JAX port shipped with bf16 CE in exp 34 by construction — the torchax→JAX rewrite skipped the spurious `.to(fp32)` that torchax had inherited.
+
+**Changes made**:
+- `jax/train.py` — added `JAX_CE_DTYPE` env-var gate; default `bf16` (= exp 36 behavior), setting `fp32` reintroduces the upcast path for future A/B comparisons. Also nudged the final reduction's scalar accumulator to explicit fp32 (was implicit bf16) — this touches a `[B*S=3072]` scalar-only tensor, cost negligible, improves loss-value stability across batch sizes.
+
+**Actual outcome**:
+- TPS (median 6–15): 34,614 → **34,629** (Δ **+0.04 %** — flat, deep in noise)
+- TPS (mean 2–19): 34,583 → 34,653 (+0.20 %)
+- Step time (median 6–15): 355.0 → **354.85 ms** (−0.15 ms)
+- Peak HBM: 27.11 → **27.45 GiB** (86.75 % → **87.84 %**, **+0.34 GiB**, the opposite direction from hypothesis) — stack +0.34 GiB, heap unchanged at 10.67 GiB, free 4.14 → 3.80 GiB
+- Loss step 19: 1.8359 → 1.8314 (−0.0045, healthy; explicit fp32 scalar accumulator slightly more accurate)
+
+**Profile signals**:
+- HLO graph **bit-identical-modulo-one-implicit-cast** to exp 36. `loop fusion` −14.5 ms, everything else unchanged within <1 ms.
+- conv-fusion 1512 ms (+0.7), loop-fusion 1250 ms (−14.5), collective-permute-done 549 ms (−0.3), splash custom-fusion 175 ms (−0.1).
+
+**Analysis**: the experiment measured the default (bf16) path against exp 36's identical-by-construction default; the +0.04 % delta is noise. The hypothesized 1.5 GiB heap save did not materialize because there was no fp32 logits tile in exp 36 to save — XLA was already lowering `jax.nn.log_softmax(flat_logits_bf16)` to bf16-in/bf16-out from exp 34 onwards. The peak-heap tenant at the 10.67 GiB peak moment is the backward-pass activation tile, not the forward-pass log-softmax intermediate.
+
+**What the torchax stack had that the JAX port didn't**: torchax's `train.py` line 418 had an explicit `flat_logits.to(torch.float32)` before `log_softmax`. Exp 12 removed that cast → 1.5 GiB saved. The native-JAX port was written from scratch (exp 34 port) without porting that cast, so the win came for free at port time.
+
+**Decision**: `parked` (POTENTIAL, flat-by-construction). Durable artifact: the `JAX_CE_DTYPE` env-var gate (useful for regression guards if later experiments refactor the LM-head dtype flow). Exp 36 remains the **current JAX-stack best at 34,614 TPS**.
+
+**Follow-ups (updated)**:
+- Exp 37 is resolved as no-op. Ranking from exp 36 stands minus exp 37:
+- **exp 38 — collective-permute-done investigation**. Still 12.1 % of step time (549 ms/3-step). Now highest-expected-value open hypothesis. `in_shardings`/`out_shardings` audit on the jitted step. Confidence medium. Effort S-M.
+- **exp 39 — Pallas RMSNorm kernel**. `loop fusion` 27.6 % of step time (1250 ms). 210 norm calls/step. Confidence medium. Effort M.
+- **exp 40 — scan-over-layers**. Compile-time win. Latency-to-first-signal.
+- **exp 41 — b=4**. 3.80 GiB HBM free at exp 37. b=4 adds ~3.5 GiB activation — risky; defer until exp 38 frees some collective buffer space.

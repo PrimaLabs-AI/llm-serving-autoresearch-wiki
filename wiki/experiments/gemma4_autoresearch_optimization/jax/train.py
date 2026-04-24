@@ -206,14 +206,31 @@ def main(argv: Optional[list] = None) -> int:
 
     in_shard = input_sharding(mesh)
 
-    # Pure-jax forward+loss, closing over graphdef (static). -----------------
+    # CE dtype gate (exp 37). Default bf16: logits stay bf16, log_softmax runs
+    # in bf16, no intermediate fp32 [B*S, V] materialization (V=262144 ~ 1.5 GiB
+    # at b=3 s=1024). Gemma 4's final_logit_softcapping=30.0 bounds logits to
+    # ±30, well within bf16's range — verified numerically stable by torchax
+    # exp 12 (https://.../torchax/experiments/2026-04-23-exp12-bf16-ce-accepted.md).
+    # Set JAX_CE_DTYPE=fp32 to restore the upcast path for comparison.
+    ce_dtype_env = os.environ.get("JAX_CE_DTYPE", "bf16").lower()
+    if ce_dtype_env == "fp32":
+        ce_dtype = jnp.float32
+        print(f"[ce] JAX_CE_DTYPE=fp32 — logits upcast to fp32 before log_softmax")
+    else:
+        ce_dtype = jnp.bfloat16
+        print(f"[ce] JAX_CE_DTYPE=bf16 — log_softmax in bf16 (default; ~1.5 GiB saved)")
+
+    # Pure-jax forward+loss, closing over graphdef + ce_dtype (static). -------
     def forward_loss(state, input_ids, labels):
         model = nnx.merge(graphdef, state)
-        logits = model(input_ids)  # (B, T, V)
-        # CE with ignore_index=-100; bf16 log_softmax to drop the ~4 GiB
-        # fp32 logits tensor. Gemma 4 softcap=30 keeps bf16 stable.
+        logits = model(input_ids)  # (B, T, V) — bf16 from the model forward
+        # CE with ignore_index=-100. When ce_dtype=bf16 (default), log_softmax
+        # runs entirely in bf16 — no fp32 [B*S, V] intermediate. Gemma 4's
+        # softcap=30 keeps the softmax stable. The accumulator for the final
+        # reduction is promoted to fp32 so cumulative error over B*S tokens
+        # doesn't shift the loss value reported back to the optimizer schedule.
         vocab = logits.shape[-1]
-        flat_logits = logits.reshape(-1, vocab)
+        flat_logits = logits.reshape(-1, vocab).astype(ce_dtype)
         flat_labels = labels.reshape(-1)
         mask = (flat_labels != IGNORE_INDEX).astype(flat_logits.dtype)
         log_probs = jax.nn.log_softmax(flat_logits, axis=-1)
@@ -221,7 +238,9 @@ def main(argv: Optional[list] = None) -> int:
             flat_labels == IGNORE_INDEX, jnp.zeros_like(flat_labels), flat_labels
         )
         picked = jnp.take_along_axis(log_probs, safe_labels[:, None], axis=-1).squeeze(-1)
-        loss = -(picked * mask).sum() / jnp.maximum(mask.sum(), 1.0)
+        # Promote the tiny scalar reduction to fp32 so the reported loss is
+        # stable across token counts (negligible cost: one scalar div).
+        loss = -(picked.astype(jnp.float32) * mask.astype(jnp.float32)).sum() / jnp.maximum(mask.sum().astype(jnp.float32), 1.0)
         return loss.astype(jnp.float32)
 
     from jax import checkpoint_policies as _ckpt_policies
