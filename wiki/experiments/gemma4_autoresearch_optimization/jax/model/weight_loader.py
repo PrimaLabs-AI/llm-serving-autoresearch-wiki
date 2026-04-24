@@ -1,0 +1,199 @@
+"""HuggingFace safetensors -> Flax NNX weight loader for Gemma 4.
+
+Loads `google/gemma-4-E4B` checkpoint files and copies tensor values into
+the NNX parameter tree of a `Gemma4ForCausalLM` instance (built with
+random init). Drops all non-text-tower keys (audio, vision, multimodal
+connectors, expert-MoE, clipped-linear buffers, etc.). Also drops the
+``k_proj`` / ``v_proj`` / ``k_norm`` / ``v_norm`` weights for shared-KV
+layers (HF runtime ignores them).
+
+Assumes the HF param-name convention:
+    model.language_model.<sub>                -> model.<sub>
+    lm_head.weight                            -> (tied, ignored if tie=True)
+
+Usage:
+    from transformers import Gemma4TextConfig
+    from flax import nnx
+    from model.modeling_gemma4 import Gemma4ForCausalLM
+    from model.weight_loader import load_hf_weights
+
+    cfg = Gemma4TextConfig.from_pretrained("google/gemma-4-E4B")
+    model = Gemma4ForCausalLM(cfg, dtype=jnp.bfloat16, rngs=nnx.Rngs(0))
+    load_hf_weights(model, "/path/to/model.safetensors")
+"""
+from __future__ import annotations
+
+import glob
+import os
+import re
+from typing import Iterator
+
+import jax
+import jax.numpy as jnp
+from flax import nnx
+
+
+_LANGUAGE_PREFIX = "model.language_model."
+
+
+def _iter_safetensors_paths(model_id_or_path: str) -> list[str]:
+    """Resolve a HF model id or path to a list of safetensors shard paths."""
+    if os.path.isdir(model_id_or_path):
+        # explicit directory
+        paths = sorted(glob.glob(os.path.join(model_id_or_path, "*.safetensors")))
+        if paths:
+            return paths
+    if os.path.isfile(model_id_or_path):
+        return [model_id_or_path]
+    # Resolve via HF cache.
+    from huggingface_hub import snapshot_download
+
+    snapshot = snapshot_download(
+        repo_id=model_id_or_path,
+        allow_patterns=["*.safetensors", "*.json"],
+    )
+    paths = sorted(glob.glob(os.path.join(snapshot, "*.safetensors")))
+    if not paths:
+        raise FileNotFoundError(
+            f"No safetensors found for {model_id_or_path!r} at {snapshot!r}"
+        )
+    return paths
+
+
+def _iter_hf_tensors(paths: list[str]) -> Iterator[tuple[str, "torch.Tensor"]]:
+    """Yield (name, tensor) pairs across all safetensors shards."""
+    from safetensors import safe_open
+    for p in paths:
+        with safe_open(p, framework="pt") as f:
+            for k in f.keys():
+                yield k, f.get_tensor(k)
+
+
+def _strip_prefix(name: str) -> str:
+    """model.language_model.X -> model.X  (train loop's NNX tree root is
+    a Gemma4ForCausalLM whose `.model` is the text tower)."""
+    if name.startswith(_LANGUAGE_PREFIX):
+        return "model." + name[len(_LANGUAGE_PREFIX):]
+    return name
+
+
+# Param names we never want to copy into the text-only NNX tree.
+_DROP_SUBSTRINGS = (
+    "audio_tower.",
+    "vision_tower.",
+    "multi_modal_projector.",
+    "embed_audio_tokens.",
+    "embed_vision_tokens.",
+)
+
+
+def _should_skip(name: str) -> bool:
+    return any(s in name for s in _DROP_SUBSTRINGS)
+
+
+def _resolve_nnx_param(model: nnx.Module, dotted_path: str) -> nnx.Param | None:
+    """Look up `model.a.b.c.weight` on an NNX module tree. Returns None if
+    any segment is missing (we use that to silently drop shared-KV
+    projections and similar).
+
+    Accepts list indices: ``model.layers.0.foo`` resolves via Python list
+    indexing on the ``layers`` list."""
+    node = model
+    parts = dotted_path.split(".")
+    for p in parts:
+        if p.isdigit() and isinstance(node, list):
+            idx = int(p)
+            if idx >= len(node):
+                return None
+            node = node[idx]
+            continue
+        if not hasattr(node, p):
+            return None
+        node = getattr(node, p)
+        if node is None:
+            return None
+    if isinstance(node, nnx.Param):
+        return node
+    return None
+
+
+def load_hf_weights(
+    model: nnx.Module,
+    model_id_or_path: str,
+    *,
+    dtype: jnp.dtype | None = None,
+    verbose: bool = False,
+) -> dict[str, int]:
+    """Copy HF weights into the NNX param tree in place.
+
+    Returns a small report dict with counts of assigned / skipped /
+    missing params."""
+    paths = _iter_safetensors_paths(model_id_or_path)
+    # PORT: shared-KV layers don't own k_proj/v_proj/k_norm/v_norm in the
+    # NNX tree (we set them to None during __init__). HF checkpoint still
+    # carries these weights; drop them here.
+    num_layers = model.config.num_hidden_layers
+    num_shared = getattr(model.config, "num_kv_shared_layers", 0)
+    first_shared = num_layers - num_shared if num_shared else num_layers
+    shared_drop_pat = re.compile(
+        rf"model\.layers\.(\d+)\.self_attn\.(k_proj|v_proj|k_norm|v_norm)\."
+    )
+
+    stats = {"assigned": 0, "skipped_modality": 0, "skipped_shared_kv": 0,
+             "skipped_tied_lm_head": 0, "missing": 0}
+    missing_names: list[str] = []
+
+    for hf_name, tensor in _iter_hf_tensors(paths):
+        if _should_skip(hf_name):
+            stats["skipped_modality"] += 1
+            continue
+        name = _strip_prefix(hf_name)
+        # Skip lm_head if tied (we don't instantiate lm_head in that case).
+        if name == "lm_head.weight" and getattr(model, "_tied", False):
+            stats["skipped_tied_lm_head"] += 1
+            continue
+        # Skip shared-KV-layer projections.
+        m = shared_drop_pat.match(name)
+        if m:
+            layer_idx = int(m.group(1))
+            if num_shared and layer_idx >= first_shared:
+                stats["skipped_shared_kv"] += 1
+                continue
+        # Try to resolve.
+        param = _resolve_nnx_param(model, name)
+        if param is None:
+            stats["missing"] += 1
+            if len(missing_names) < 20:
+                missing_names.append(name)
+            continue
+        # Convert torch -> jnp. torch bf16 doesn't round-trip through numpy
+        # (no native bf16 dtype in numpy), so cast to fp32 first, convert,
+        # then cast to the target dtype.
+        t = tensor.detach()
+        import torch as _torch
+        if t.dtype == _torch.bfloat16:
+            arr = jnp.asarray(t.to(_torch.float32).numpy())
+            arr = arr.astype(jnp.bfloat16)
+        else:
+            arr = jnp.asarray(t.numpy())
+        if dtype is not None:
+            arr = arr.astype(dtype)
+        # Expected shape check.
+        if tuple(arr.shape) != tuple(param.value.shape):
+            raise ValueError(
+                f"Shape mismatch for {name!r}: HF={tuple(arr.shape)} "
+                f"vs NNX={tuple(param.value.shape)}"
+            )
+        param.value = arr
+        stats["assigned"] += 1
+
+    if verbose:
+        print(f"[weight-loader] {stats}")
+        if missing_names:
+            print("[weight-loader] missing (first 20):")
+            for n in missing_names:
+                print(f"  - {n}")
+    return stats
+
+
+__all__ = ["load_hf_weights"]
