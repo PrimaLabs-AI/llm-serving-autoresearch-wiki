@@ -122,12 +122,19 @@ def load_hf_weights(
     model_id_or_path: str,
     *,
     dtype: jnp.dtype | None = None,
+    weights_dtype: jnp.dtype | None = None,
     verbose: bool = False,
 ) -> dict[str, int]:
     """Copy HF weights into the NNX param tree in place.
 
+    ``weights_dtype`` (exp 52+) is the storage dtype on the NNX side —
+    e.g. fp32 for master-weights AMP, bf16 for legacy. If both
+    ``weights_dtype`` and ``dtype`` are given, ``weights_dtype`` wins.
+    If neither is given, the tensor's native HF dtype is preserved.
+
     Returns a small report dict with counts of assigned / skipped /
     missing params."""
+    target_dtype = weights_dtype if weights_dtype is not None else dtype
     paths = _iter_safetensors_paths(model_id_or_path)
     # PORT: shared-KV layers don't own k_proj/v_proj/k_norm/v_norm in the
     # NNX tree (we set them to None during __init__). HF checkpoint still
@@ -176,8 +183,8 @@ def load_hf_weights(
             arr = arr.astype(jnp.bfloat16)
         else:
             arr = jnp.asarray(t.numpy())
-        if dtype is not None:
-            arr = arr.astype(dtype)
+        if target_dtype is not None:
+            arr = arr.astype(target_dtype)
         # Expected shape check.
         if tuple(arr.shape) != tuple(param.value.shape):
             raise ValueError(

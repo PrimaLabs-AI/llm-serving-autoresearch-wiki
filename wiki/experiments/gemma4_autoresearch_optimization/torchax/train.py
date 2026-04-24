@@ -51,7 +51,8 @@ from typing import Optional
 DEFAULTS = {
     "model_id": "google/gemma-4-E4B",
     "dataset": "wikitext-2-raw-v1",
-    "seq_len": 2048,
+    # Exp 52+: new default seq_len=8192 (was 2048) to match the JAX stack.
+    "seq_len": 8192,
     "batch_size": 4,
     "steps": 20,
     "learning_rate": 1e-5,
@@ -60,7 +61,14 @@ DEFAULTS = {
     "dp": 1,
     "tp": 1,
     "fsdp": 0,  # 0 == jax.device_count()
+    # Legacy single-dtype shortcut. On torchax the split flags below are
+    # recognized but not fully wired — torchax models dispatch through
+    # HF PyTorch which takes a single torch_dtype. Passing
+    # --weights-dtype fp32 --compute-dtype bf16 on torchax triggers a
+    # warning and falls back to bf16 everywhere.
     "dtype": "bf16",
+    "weights_dtype": "bf16",  # torchax defaults to legacy bf16
+    "compute_dtype": "bf16",
     "log_every": 1,
     "grad_accum": 1,
     "seed": 42,
@@ -95,7 +103,26 @@ def _build_argparser() -> argparse.ArgumentParser:
                    help="Data-parallel mesh axis size (TP strategy only).")
     p.add_argument("--tp", type=int, default=DEFAULTS["tp"],
                    help="Tensor-parallel mesh axis size (TP strategy only).")
-    p.add_argument("--dtype", choices=["bf16", "fp32"], default=DEFAULTS["dtype"])
+    p.add_argument("--dtype", choices=["bf16", "fp32"], default=DEFAULTS["dtype"],
+                   help="Legacy single-dtype. Primary on torchax — model is "
+                        "loaded at this dtype via HF PyTorch.")
+    # Exp 52+: split flags accepted for CLI parity with the JAX trainer.
+    # On torchax the mixed-precision wiring is NOT implemented — the HF
+    # PyTorch model takes a single torch_dtype. If you ask for fp32 master
+    # + bf16 compute on torchax, a warning is printed and the run falls
+    # back to the legacy --dtype value. Full support is JAX-only.
+    p.add_argument(
+        "--weights-dtype", dest="weights_dtype",
+        choices=["bf16", "fp32"], default=DEFAULTS["weights_dtype"],
+        help="Storage dtype for model params. torchax: stub (warns + falls "
+             "back to --dtype). Use the JAX trainer for full AMP support.",
+    )
+    p.add_argument(
+        "--compute-dtype", dest="compute_dtype",
+        choices=["bf16", "fp32"], default=DEFAULTS["compute_dtype"],
+        help="Compute dtype for matmul/conv. torchax: stub (warns + falls "
+             "back to --dtype). Use the JAX trainer for full AMP support.",
+    )
     p.add_argument("--checkpoint_dir", default=None,
                    help="If set, save torchax checkpoint at end. Skipped if unset.")
     p.add_argument("--profile_dir", default=None,
@@ -223,6 +250,20 @@ def main(argv: Optional[list] = None) -> int:
     torch.manual_seed(args.seed)
 
     # Precision / env setup ---------------------------------------------------
+    # Exp 52+: CLI mirrors the JAX trainer's --weights-dtype / --compute-dtype,
+    # but torchax lowers through HF PyTorch which takes a single torch_dtype.
+    # If the caller requested a split (fp32 master + bf16 compute), warn and
+    # fall back to --dtype. Full AMP support is JAX-only.
+    if args.weights_dtype != args.compute_dtype:
+        print(f"[dtype] WARNING: torchax does not implement split "
+              f"--weights-dtype={args.weights_dtype} / --compute-dtype={args.compute_dtype}. "
+              f"Falling back to legacy --dtype={args.dtype}. "
+              f"Use the JAX trainer for full fp32-master AMP support.")
+    else:
+        # No split requested → harmless, but print effective dtype.
+        print(f"[dtype] torchax legacy single-dtype={args.dtype} "
+              f"(split flags weights={args.weights_dtype} compute={args.compute_dtype} coincide).")
+
     if args.dtype == "bf16":
         torchax.enable_performance_mode()  # bf16 matmul, no x64
     else:

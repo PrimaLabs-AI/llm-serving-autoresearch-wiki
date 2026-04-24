@@ -26,7 +26,10 @@ from typing import Optional
 DEFAULTS = {
     "model_id": "google/gemma-4-E4B",
     "dataset": "wikitext-2-raw-v1",
-    "seq_len": 2048,
+    # Exp 52+: new regime default is seq_len=8192 with fp32 master weights
+    # + bf16 compute (mixed precision). Pass --dtype bf16 to fall back to
+    # the legacy single-dtype (bf16 everywhere) path.
+    "seq_len": 8192,
     "batch_size": 4,
     "steps": 20,
     "learning_rate": 1e-5,
@@ -35,7 +38,9 @@ DEFAULTS = {
     "dp": 1,
     "tp": 1,
     "fsdp": 0,
-    "dtype": "bf16",
+    "dtype": None,  # legacy single-dtype shortcut; None = use split below
+    "weights_dtype": "fp32",
+    "compute_dtype": "bf16",
     "log_every": 1,
     "grad_accum": 1,
     "seed": 42,
@@ -59,7 +64,27 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--fsdp", type=int, default=DEFAULTS["fsdp"])
     p.add_argument("--dp", type=int, default=DEFAULTS["dp"])
     p.add_argument("--tp", type=int, default=DEFAULTS["tp"])
-    p.add_argument("--dtype", choices=["bf16", "fp32"], default=DEFAULTS["dtype"])
+    # Exp 52+: mixed-precision flags (fp32 master + bf16 compute).
+    # --dtype is kept as a legacy shortcut that sets BOTH --weights-dtype
+    # and --compute-dtype to the given value. Passing --dtype explicitly
+    # overrides the --weights-dtype / --compute-dtype defaults.
+    p.add_argument(
+        "--dtype", choices=["bf16", "fp32"], default=DEFAULTS["dtype"],
+        help="Legacy single-dtype shortcut. If set, overrides both "
+             "--weights-dtype and --compute-dtype. Default is unset: use "
+             "the split flags below (fp32 master + bf16 compute).",
+    )
+    p.add_argument(
+        "--weights-dtype", dest="weights_dtype",
+        choices=["bf16", "fp32"], default=DEFAULTS["weights_dtype"],
+        help="Storage dtype for model params & optimizer state. Default fp32 "
+             "(master weights). Set to bf16 to match the legacy pre-exp-52 mode.",
+    )
+    p.add_argument(
+        "--compute-dtype", dest="compute_dtype",
+        choices=["bf16", "fp32"], default=DEFAULTS["compute_dtype"],
+        help="Compute dtype for matmul/conv activations. Default bf16.",
+    )
     p.add_argument("--checkpoint_dir", default=None)
     p.add_argument("--profile_dir", default=None)
     p.add_argument("--profile_steps", type=int, nargs="*", default=[])
@@ -109,7 +134,27 @@ def main(argv: Optional[list] = None) -> int:
 
     np.random.seed(args.seed)
 
-    jnp_dtype = jnp.bfloat16 if args.dtype == "bf16" else jnp.float32
+    # Resolve weights_dtype / compute_dtype. --dtype is a legacy single-dtype
+    # shortcut that, when set, overrides the split flags.
+    def _to_jnp_dtype(name: str):
+        return jnp.bfloat16 if name == "bf16" else jnp.float32
+
+    if args.dtype is not None:
+        weights_dtype_name = args.dtype
+        compute_dtype_name = args.dtype
+        print(f"[dtype] legacy --dtype {args.dtype} -> weights={args.dtype} compute={args.dtype}")
+    else:
+        weights_dtype_name = args.weights_dtype
+        compute_dtype_name = args.compute_dtype
+        print(f"[dtype] weights={weights_dtype_name} compute={compute_dtype_name} "
+              f"({'mixed-precision AMP' if weights_dtype_name != compute_dtype_name else 'single-dtype'})")
+
+    weights_dtype = _to_jnp_dtype(weights_dtype_name)
+    compute_dtype = _to_jnp_dtype(compute_dtype_name)
+    # Back-compat variable name used downstream (sharding etc. read this
+    # as the "primary" dtype). Use weights_dtype so sharding treats
+    # storage correctly.
+    jnp_dtype = weights_dtype
 
     # Mesh --------------------------------------------------------------------
     if args.strategy == "fsdp":
@@ -132,7 +177,7 @@ def main(argv: Optional[list] = None) -> int:
         print(f"[attn] JAX_ATTENTION_IMPL={attn_impl} — XLA SDPA (baseline)")
 
     # Load HF config (text-only sub-config). ----------------------------------
-    print(f"[load] {args.model_id} ({args.dtype})")
+    print(f"[load] {args.model_id} (weights={weights_dtype_name} compute={compute_dtype_name})")
     t0 = time.perf_counter()
     hf_config = AutoConfig.from_pretrained(args.model_id)
     text_cfg = hf_config.text_config if hasattr(hf_config, "text_config") else hf_config
@@ -140,7 +185,12 @@ def main(argv: Optional[list] = None) -> int:
 
     # Build the NNX model with random init (will be overwritten by loader).
     rngs = nnx.Rngs(args.seed)
-    model = Gemma4ForCausalLM(text_cfg, dtype=jnp_dtype, rngs=rngs)
+    model = Gemma4ForCausalLM(
+        text_cfg,
+        weights_dtype=weights_dtype,
+        compute_dtype=compute_dtype,
+        rngs=rngs,
+    )
 
     # Pre-build splash kernels (one per (sliding_window, head_dim) combo).
     # This materializes MaskInfo at top-level so the lru_cache entries aren't
@@ -167,7 +217,7 @@ def main(argv: Optional[list] = None) -> int:
         ) if _os.environ.get(k) is not None}
         if _splash_env_snapshot:
             print(f"[attn] splash overrides: {_splash_env_snapshot}")
-    stats = load_hf_weights(model, args.model_id, dtype=jnp_dtype, verbose=True)
+    stats = load_hf_weights(model, args.model_id, weights_dtype=weights_dtype, verbose=True)
     print(f"[load] weights: assigned={stats['assigned']} "
           f"skipped_modality={stats['skipped_modality']} "
           f"skipped_shared_kv={stats['skipped_shared_kv']} "

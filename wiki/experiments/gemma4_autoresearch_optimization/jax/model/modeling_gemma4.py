@@ -83,6 +83,11 @@ class Gemma4RMSNorm(nnx.Module):
 
     If ``with_scale`` is False, the weight buffer is omitted and forward
     returns the normalized tensor unscaled (still upcast-then-downcast).
+
+    Exp 52+: `weights_dtype` controls storage (fp32 master or bf16 legacy)
+    and is the only dtype that actually matters here — norms are inherently
+    upcast-to-fp32 in forward. ``dtype`` is accepted as a legacy alias for
+    ``weights_dtype`` for backward compat.
     """
 
     def __init__(
@@ -91,16 +96,23 @@ class Gemma4RMSNorm(nnx.Module):
         eps: float = 1e-6,
         *,
         with_scale: bool = True,
-        dtype: jnp.dtype = jnp.float32,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.float32,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.eps = eps
         self.with_scale = with_scale
         self.dim = dim
-        self.compute_dtype = dtype
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
         if with_scale:
             # Init to ones — matches HF nn.Parameter(torch.ones(dim)).
-            self.weight = nnx.Param(jnp.ones((dim,), dtype=dtype))
+            self.weight = nnx.Param(jnp.ones((dim,), dtype=weights_dtype))
 
     def __call__(self, x: jax.Array) -> jax.Array:
         in_dtype = x.dtype
@@ -118,7 +130,15 @@ class Gemma4TextScaledWordEmbedding(nnx.Module):
 
     Matches HF's Gemma4TextScaledWordEmbedding: the scale factor is baked as
     a scalar constant (the HF code registers it as a non-persistent buffer
-    ``embed_scale`` then casts to weight dtype at forward time)."""
+    ``embed_scale`` then casts to weight dtype at forward time).
+
+    Exp 52+: storage = ``weights_dtype`` (fp32 master or bf16 legacy).
+    Output is cast to ``compute_dtype`` (bf16 under AMP) so downstream
+    attention / MLP receives bf16 activations regardless of fp32 master
+    weights. Gather on fp32 table is fine; the single downcast to bf16
+    happens once per forward, matches the "fp32 master + bf16 compute"
+    contract.
+    """
 
     def __init__(
         self,
@@ -126,21 +146,33 @@ class Gemma4TextScaledWordEmbedding(nnx.Module):
         embedding_dim: int,
         embed_scale: float = 1.0,
         *,
-        dtype: jnp.dtype = jnp.bfloat16,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.embed_scale = float(embed_scale)
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
         # Init random-normal — real weights come from from_pretrained.
         key = rngs.params()
         self.weight = nnx.Param(
-            jax.random.normal(key, (num_embeddings, embedding_dim), dtype=dtype) * 0.02
+            jax.random.normal(key, (num_embeddings, embedding_dim), dtype=weights_dtype) * 0.02
         )
 
     def __call__(self, input_ids: jax.Array) -> jax.Array:
-        out = self.weight.value[input_ids]  # (B, T, D)
-        scale = jnp.array(self.embed_scale, dtype=self.weight.value.dtype)
+        # Gather in storage dtype, then downcast to compute dtype so
+        # downstream ops see bf16 activations under fp32-master AMP.
+        out = self.weight.value[input_ids]  # (B, T, D) in weights_dtype
+        if out.dtype != self.compute_dtype:
+            out = out.astype(self.compute_dtype)
+        scale = jnp.array(self.embed_scale, dtype=out.dtype)
         return out * scale
 
 
@@ -149,7 +181,18 @@ class Linear(nnx.Module):
 
     HF's ``nn.Linear(in, out)`` stores weight as (out, in) and computes
     ``x @ weight.T``. We keep the **same storage shape** (out, in) so the
-    HF safetensors keys map 1:1 without a transpose at load time."""
+    HF safetensors keys map 1:1 without a transpose at load time.
+
+    Exp 52+: mixed precision. ``weights_dtype`` is the storage dtype
+    (fp32 master) and ``compute_dtype`` is the dtype used for the matmul
+    (bf16 compute). When they differ the matmul downcasts W to
+    compute_dtype at call time (a single HBM→HBM bf16 cast per forward;
+    for fp32→bf16 matmuls XLA also folds the cast into the dot when it
+    can). Activations coming in are expected to already be in
+    compute_dtype; we cast defensively to guarantee homogeneous dot-dtype.
+    Bias, if present, is stored in weights_dtype and cast to the output's
+    dtype on add.
+    """
 
     def __init__(
         self,
@@ -157,30 +200,48 @@ class Linear(nnx.Module):
         out_features: int,
         *,
         bias: bool = False,
-        dtype: jnp.dtype = jnp.bfloat16,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.in_features = in_features
         self.out_features = out_features
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
         key = rngs.params()
         # Store (out, in) — matches torch nn.Linear.weight shape.
         init_std = 1.0 / math.sqrt(in_features)
         self.weight = nnx.Param(
             jax.random.uniform(
                 key, (out_features, in_features),
-                minval=-init_std, maxval=init_std, dtype=dtype,
+                minval=-init_std, maxval=init_std, dtype=weights_dtype,
             )
         )
         if bias:
-            self.bias = nnx.Param(jnp.zeros((out_features,), dtype=dtype))
+            self.bias = nnx.Param(jnp.zeros((out_features,), dtype=weights_dtype))
         else:
             self.bias = None
 
     def __call__(self, x: jax.Array) -> jax.Array:
-        # x: (..., in_features); weight: (out, in); result: (..., out)
-        out = x @ self.weight.value.T
+        # x: (..., in_features); weight: (out, in); result: (..., out).
+        # Downcast weight to compute_dtype (no-op if storage already = compute).
+        # Cast activation defensively so the dot sees a single dtype.
+        w = self.weight.value
+        if w.dtype != self.compute_dtype:
+            w = w.astype(self.compute_dtype)
+        if x.dtype != self.compute_dtype:
+            x = x.astype(self.compute_dtype)
+        out = x @ w.T
         if self.bias is not None:
-            out = out + self.bias.value
+            b = self.bias.value
+            if b.dtype != out.dtype:
+                b = b.astype(out.dtype)
+            out = out + b
         return out
 
 
@@ -273,9 +334,15 @@ class Gemma4TextMLP(nnx.Module):
         config: Gemma4TextConfig,
         layer_idx: int,
         *,
-        dtype: jnp.dtype,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.config = config
         # PORT: E4B has use_double_wide_mlp=False (confirmed). We fix
         # intermediate_size = config.intermediate_size for simplicity and skip
@@ -283,15 +350,10 @@ class Gemma4TextMLP(nnx.Module):
         # matters, gate this on (config.use_double_wide_mlp and is_kv_shared).
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = Linear(
-            self.hidden_size, self.intermediate_size, dtype=dtype, rngs=rngs
-        )
-        self.up_proj = Linear(
-            self.hidden_size, self.intermediate_size, dtype=dtype, rngs=rngs
-        )
-        self.down_proj = Linear(
-            self.intermediate_size, self.hidden_size, dtype=dtype, rngs=rngs
-        )
+        lin_kwargs = dict(weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs)
+        self.gate_proj = Linear(self.hidden_size, self.intermediate_size, **lin_kwargs)
+        self.up_proj = Linear(self.hidden_size, self.intermediate_size, **lin_kwargs)
+        self.down_proj = Linear(self.intermediate_size, self.hidden_size, **lin_kwargs)
 
     def __call__(self, x: jax.Array) -> jax.Array:
         return self.down_proj(_gelu_pytorch_tanh(self.gate_proj(x)) * self.up_proj(x))
@@ -353,14 +415,22 @@ class Gemma4TextAttention(nnx.Module):
         config: Gemma4TextConfig,
         layer_idx: int,
         *,
-        dtype: jnp.dtype,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.config = config
         self.layer_idx = layer_idx
         self.layer_type = config.layer_types[layer_idx]
         self.is_sliding = self.layer_type == "sliding_attention"
         self.sliding_window = config.sliding_window if self.is_sliding else None
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
 
         # Head dim by layer_type.
         if not self.is_sliding and config.global_head_dim:
@@ -395,28 +465,31 @@ class Gemma4TextAttention(nnx.Module):
                 config.layer_types[layer_idx]
             )
 
+        lin_kwargs = dict(weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs)
+        norm_kwargs = dict(weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs)
+
         # Projections.
         hidden = config.hidden_size
         self.q_proj = Linear(
             hidden, self.num_heads * self.head_dim,
-            bias=config.attention_bias, dtype=dtype, rngs=rngs,
+            bias=config.attention_bias, **lin_kwargs,
         )
         # q_norm is per-head (head_dim).
-        self.q_norm = Gemma4RMSNorm(self.head_dim, eps=config.rms_norm_eps, rngs=rngs)
+        self.q_norm = Gemma4RMSNorm(self.head_dim, eps=config.rms_norm_eps, **norm_kwargs)
 
         if not self.is_kv_shared_layer:
-            self.k_norm = Gemma4RMSNorm(self.head_dim, eps=config.rms_norm_eps, rngs=rngs)
+            self.k_norm = Gemma4RMSNorm(self.head_dim, eps=config.rms_norm_eps, **norm_kwargs)
             # v_norm has with_scale=False (no parameter).
             self.v_norm = Gemma4RMSNorm(
-                self.head_dim, eps=config.rms_norm_eps, with_scale=False, rngs=rngs,
+                self.head_dim, eps=config.rms_norm_eps, with_scale=False, **norm_kwargs,
             )
             self.k_proj = Linear(
                 hidden, num_key_value_heads * self.head_dim,
-                bias=config.attention_bias, dtype=dtype, rngs=rngs,
+                bias=config.attention_bias, **lin_kwargs,
             )
             self.v_proj = Linear(
                 hidden, num_key_value_heads * self.head_dim,
-                bias=config.attention_bias, dtype=dtype, rngs=rngs,
+                bias=config.attention_bias, **lin_kwargs,
             )
         else:
             self.k_norm = None
@@ -426,7 +499,7 @@ class Gemma4TextAttention(nnx.Module):
 
         self.o_proj = Linear(
             self.num_heads * self.head_dim, hidden,
-            bias=config.attention_bias, dtype=dtype, rngs=rngs,
+            bias=config.attention_bias, **lin_kwargs,
         )
 
     def __call__(
@@ -512,38 +585,46 @@ class Gemma4TextDecoderLayer(nnx.Module):
         config: Gemma4TextConfig,
         layer_idx: int,
         *,
-        dtype: jnp.dtype,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.config = config
         self.layer_idx = layer_idx
         self.hidden_size = config.hidden_size
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
 
-        self.self_attn = Gemma4TextAttention(config, layer_idx, dtype=dtype, rngs=rngs)
-        self.mlp = Gemma4TextMLP(config, layer_idx, dtype=dtype, rngs=rngs)
+        child_kwargs = dict(weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs)
+        self.self_attn = Gemma4TextAttention(config, layer_idx, **child_kwargs)
+        self.mlp = Gemma4TextMLP(config, layer_idx, **child_kwargs)
 
         eps = config.rms_norm_eps
-        self.input_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, rngs=rngs)
-        self.post_attention_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, rngs=rngs)
-        self.pre_feedforward_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, rngs=rngs)
-        self.post_feedforward_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, rngs=rngs)
+        self.input_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, **child_kwargs)
+        self.post_attention_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, **child_kwargs)
+        self.pre_feedforward_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, **child_kwargs)
+        self.post_feedforward_layernorm = Gemma4RMSNorm(self.hidden_size, eps=eps, **child_kwargs)
 
-        # layer_scalar: (1,) buffer, init 1.0.
-        self.layer_scalar = nnx.Param(jnp.ones((1,), dtype=dtype))
+        # layer_scalar: (1,) buffer, init 1.0. Stored in weights_dtype so it
+        # tracks the fp32-master / bf16-legacy split consistently.
+        self.layer_scalar = nnx.Param(jnp.ones((1,), dtype=weights_dtype))
 
         # Per-Layer Embeddings (PLE) residual — E4B has hidden_size_per_layer_input=256.
         self.hidden_size_per_layer_input = config.hidden_size_per_layer_input
         if self.hidden_size_per_layer_input:
             self.per_layer_input_gate = Linear(
-                self.hidden_size, self.hidden_size_per_layer_input,
-                dtype=dtype, rngs=rngs,
+                self.hidden_size, self.hidden_size_per_layer_input, **child_kwargs,
             )
             self.per_layer_projection = Linear(
-                self.hidden_size_per_layer_input, self.hidden_size,
-                dtype=dtype, rngs=rngs,
+                self.hidden_size_per_layer_input, self.hidden_size, **child_kwargs,
             )
             self.post_per_layer_input_norm = Gemma4RMSNorm(
-                self.hidden_size, eps=eps, rngs=rngs,
+                self.hidden_size, eps=eps, **child_kwargs,
             )
 
         # MoE — skipped (E4B: enable_moe_block=False).
@@ -585,7 +666,9 @@ class Gemma4TextDecoderLayer(nnx.Module):
             x = self.post_per_layer_input_norm(x)
             hidden_states = residual + x
 
-        hidden_states = hidden_states * self.layer_scalar.value
+        # Cast layer_scalar to the hidden-states dtype so mixed-precision
+        # (fp32 master + bf16 compute) doesn't silently upcast the residual.
+        hidden_states = hidden_states * self.layer_scalar.value.astype(hidden_states.dtype)
         return hidden_states
 
 
@@ -608,26 +691,34 @@ class Gemma4TextModel(nnx.Module):
         self,
         config: Gemma4TextConfig,
         *,
-        dtype: jnp.dtype = jnp.bfloat16,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.config = config
-        self.dtype = dtype
+        self.dtype = dtype  # legacy field kept for any external readers
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
         self.vocab_size = config.vocab_size
         self.num_hidden_layers = config.num_hidden_layers
 
+        child_kwargs = dict(weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs)
         self.embed_tokens = Gemma4TextScaledWordEmbedding(
             config.vocab_size, config.hidden_size,
-            embed_scale=config.hidden_size ** 0.5,
-            dtype=dtype, rngs=rngs,
+            embed_scale=config.hidden_size ** 0.5, **child_kwargs,
         )
         # One decoder layer per index. NNX requires wrapping list-of-modules
         # with nnx.data(...) so it participates in the pytree.
         self.layers = nnx.data([
-            Gemma4TextDecoderLayer(config, i, dtype=dtype, rngs=rngs)
+            Gemma4TextDecoderLayer(config, i, **child_kwargs)
             for i in range(config.num_hidden_layers)
         ])
-        self.norm = Gemma4RMSNorm(config.hidden_size, eps=config.rms_norm_eps, rngs=rngs)
+        self.norm = Gemma4RMSNorm(config.hidden_size, eps=config.rms_norm_eps, **child_kwargs)
         self.rotary_emb = Gemma4TextRotaryEmbedding(config)
 
         # PLE components. E4B has hidden_size_per_layer_input=256, enabling PLE.
@@ -636,16 +727,15 @@ class Gemma4TextModel(nnx.Module):
             packed_dim = config.num_hidden_layers * config.hidden_size_per_layer_input
             self.embed_tokens_per_layer = Gemma4TextScaledWordEmbedding(
                 config.vocab_size_per_layer_input, packed_dim,
-                embed_scale=config.hidden_size_per_layer_input ** 0.5,
-                dtype=dtype, rngs=rngs,
+                embed_scale=config.hidden_size_per_layer_input ** 0.5, **child_kwargs,
             )
             self.per_layer_input_scale = 2.0 ** -0.5
             self.per_layer_model_projection = Linear(
-                config.hidden_size, packed_dim, dtype=dtype, rngs=rngs,
+                config.hidden_size, packed_dim, **child_kwargs,
             )
             self.per_layer_model_projection_scale = config.hidden_size ** -0.5
             self.per_layer_projection_norm = Gemma4RMSNorm(
-                config.hidden_size_per_layer_input, eps=config.rms_norm_eps, rngs=rngs,
+                config.hidden_size_per_layer_input, eps=config.rms_norm_eps, **child_kwargs,
             )
 
     def _build_masks(
@@ -777,18 +867,29 @@ class Gemma4ForCausalLM(nnx.Module):
         self,
         config: Gemma4TextConfig,
         *,
-        dtype: jnp.dtype = jnp.bfloat16,
+        weights_dtype: jnp.dtype | None = None,
+        compute_dtype: jnp.dtype | None = None,
+        dtype: jnp.dtype = jnp.bfloat16,  # legacy alias
         rngs: nnx.Rngs,
     ):
+        if weights_dtype is None:
+            weights_dtype = dtype
+        if compute_dtype is None:
+            compute_dtype = dtype
         self.config = config
-        self.dtype = dtype
-        self.model = Gemma4TextModel(config, dtype=dtype, rngs=rngs)
+        self.dtype = dtype  # legacy
+        self.weights_dtype = weights_dtype
+        self.compute_dtype = compute_dtype
+        self.model = Gemma4TextModel(
+            config, weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs,
+        )
         # No separate lm_head param when tie_word_embeddings=True (E4B).
         self._tied = bool(config.tie_word_embeddings)
         if not self._tied:
             self.lm_head = Linear(
                 config.hidden_size, config.vocab_size,
-                bias=False, dtype=dtype, rngs=rngs,
+                bias=False,
+                weights_dtype=weights_dtype, compute_dtype=compute_dtype, rngs=rngs,
             )
 
     def __call__(
@@ -805,8 +906,12 @@ class Gemma4ForCausalLM(nnx.Module):
             # skip the [B, T, V] logits materialization entirely here.
             return hidden
         if self._tied:
-            # lm_head(x) = x @ embed_weight.T  — weight is (vocab, hidden)
+            # lm_head(x) = x @ embed_weight.T  — weight is (vocab, hidden).
+            # Under fp32 master + bf16 compute: downcast weight to hidden's
+            # dtype so the dot runs in compute_dtype (matches Linear path).
             weight = self.model.embed_tokens.weight.value
+            if weight.dtype != hidden.dtype:
+                weight = weight.astype(hidden.dtype)
             logits = hidden @ weight.T
         else:
             logits = self.lm_head(hidden)
