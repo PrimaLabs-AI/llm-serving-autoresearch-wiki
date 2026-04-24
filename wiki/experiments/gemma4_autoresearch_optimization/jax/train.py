@@ -346,11 +346,21 @@ def main(argv: Optional[list] = None) -> int:
         return loss.astype(jnp.float32)
 
     from jax import checkpoint_policies as _ckpt_policies
-    checkpointed = jax.checkpoint(
-        forward_loss,
-        policy=_ckpt_policies.checkpoint_dots_with_no_batch_dims,
-    )
-    grad_fn = jax.value_and_grad(checkpointed)
+    # Under JAX_SCAN_LAYERS=1 the scan bodies carry their own per-iter
+    # `jax.checkpoint(..., policy=checkpoint_dots_with_no_batch_dims)`;
+    # wrapping forward_loss in an *outer* checkpoint as well forces
+    # double-remat (nested `jax.checkpoint`s replay forward twice on
+    # backward). Under the exp-36 Python for-loop path, this outer
+    # checkpoint is the ONLY checkpoint and is required — the for-loop
+    # would otherwise store every layer's full activation stack.
+    if os.environ.get("JAX_SCAN_LAYERS") == "1":
+        grad_fn = jax.value_and_grad(forward_loss)
+    else:
+        checkpointed = jax.checkpoint(
+            forward_loss,
+            policy=_ckpt_policies.checkpoint_dots_with_no_batch_dims,
+        )
+        grad_fn = jax.value_and_grad(checkpointed)
 
     def train_step(state, opt_state, input_ids, labels):
         with jax.named_scope("train_step"):

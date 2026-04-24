@@ -319,3 +319,42 @@ See [2026-04-24-exp49-jax-scan-layers-potential.md](2026-04-24-exp49-jax-scan-la
 3. **Measure scan + xla SDPA** (no splash) to isolate splash's contribution to the regression. Trivial to try.
 4. **Leave env gate off default**. The compile-cache (exp 45) already handles the ~360-s compile cost by caching; scan's floor-drop only matters on cache misses, which happen on fresh HLO. Revisit if a future code change invalidates the cache frequently.
 
+
+## exp 50 — scan-over-layers tuned (POTENTIAL, compile -59.6%, TPS -16.1% vs exp 36 / +6.4% vs exp 49)
+
+See [2026-04-24-exp50-jax-scan-tuned-potential.md](2026-04-24-exp50-jax-scan-tuned-potential.md) for the full page.
+
+**Config**:
+- Command delta from exp 49: none at env level — same `JAX_SCAN_LAYERS=1 JAX_ATTENTION_IMPL=splash`. Three code changes:
+  1. Split `scan_layers` into two scan groups: 4-block non-shared (24 layers with real k/v_proj) + 3-block shared (18 layers reading K/V from closure-captured carry).
+  2. Replaced exp 49's bare `@jax.checkpoint` on scan body with `jax.checkpoint(..., policy=checkpoint_dots_with_no_batch_dims)` matching exp 36's outer policy.
+  3. In `train.py`: skip the outer `jax.checkpoint(forward_loss, policy=...)` wrap when `JAX_SCAN_LAYERS=1` (scan bodies already carry the policy per-iter; outer wrap was nested-remat'ing).
+- Profile path: [`raw/profiles/2026-04-24-gemma4-jax-exp50-scan-tuned/`](../../../../../raw/profiles/2026-04-24-gemma4-jax-exp50-scan-tuned/)
+- **Profile GCS mirror**: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-24-gemma4-jax-exp50-scan-tuned/`
+
+**Hypothesis**: Removing (1) zero-stub matmul waste on 18 shared layers and (2) the bare `jax.checkpoint` per-layer remat (replacing it with the policy-matched variant) should close most of exp 49's 21 pt TPS regression. Expected recoup: ~10-13 %. Target: ±0.5 % of exp 36 (34,441-34,787 TPS).
+
+**Actual outcome**:
+- Compile step 0: 180 s -> **72.7 s** (−59.6 %, 2.5× faster; vs exp 49's 69.3 s: +4.9 % penalty from compiling two scan groups instead of one).
+- TPS: 34,614 -> **29,044** (−16.1 % all-sample 18 steps; −11.1 % on 17-sample window excluding one 828-ms step-9 outlier observed in both 15-step and 20-step runs, steady state otherwise 399 ms flat).
+- Over exp 49: **+6.4 % TPS all-sample** / **+12.8 % 17-sample**. ~5 pt of the 21 pt gap closed.
+- MFU: 19.34 % (all) / 20.50 % (17-sample) vs exp 36's 23.05 %, exp 49's 18.17 %.
+- Loss match: step 4 2.1730 vs exp 36's 2.1875 (−0.66 %), step 19 1.8271 vs 1.8359 (−0.48 %). Clean descent, well within the 5 % tolerance.
+
+**Remat path history (durable learning)**:
+1. Fix A (remove inner checkpoint, rely only on outer `forward_loss` wrap): **OOM at 51.86 GiB**. Scan materializes `bf16[4,5,3,1024,10240]` (~1.17 GiB × 7 copies) + `f32[4,5,3,1024,2560]` (~600 MiB × 8 copies) across inner×outer iterations as it stores scan-invariant activations for backward. This confirms exp 49's OOM reasoning and makes it explicit that any scan-over-42-layers-at-b=3 variant needs SOME form of in-body remat to fit 31.25 GiB HBM. Durable observation for future scan work.
+2. Fix B (inner `jax.checkpoint(policy=checkpoint_dots_with_no_batch_dims)`): fits. 432.98 ms, 28,380 TPS, −18.0 %.
+3. Fix B + drop outer `forward_loss` checkpoint: 399.24 ms (17-sample steady state), 30,778 TPS, −11.1 %. **~34 ms/step gained** by removing double-remat.
+
+**Root-cause finding — nested-checkpoint double-remat**: With the outer `jax.checkpoint(forward_loss, policy=...)` AND per-iter `jax.checkpoint(scan_body, policy=...)` both in effect, the backward pass replays the forward at two levels — once inside each scan iteration's checkpoint boundary, and again at the outer boundary. Removing the outer wrap when the scan bodies carry the same policy saves ~7.9 % step time with no memory cost (the per-iter checkpoints still prevent the scan-activation OOM). **New heuristic**: never nest `jax.checkpoint` with the same policy; the outer is redundant when the inner already covers every iteration.
+
+**Durable artifacts**:
+1. **`jax/model/scan_layers.py`** — cleaner two-group structure (no zero-stub hack, no `jnp.where` KV mux). Easier to reason about and extend.
+2. **`jax/train.py` scan-aware checkpoint dispatch** — documents the nested-checkpoint pitfall inline.
+3. **Empirical data point on nested-`jax.checkpoint` double-remat at scale**: quantified at ~7.9 % step time on Gemma 4 E4B at v6e-4 b=3 s=1024. General learning for any future scan-under-checkpoint workload.
+
+**Follow-ups (ranked, none urgent since exp 36 remains JAX-stack best)**:
+1. **exp 51 — scan + xla SDPA (no splash)** to isolate whether splash under shard_map under scan is the residual hot spot. Flag-only. If xla path shows smaller regression, splash is the culprit; we'd need a splash-scan-compatible sharding primitive. Confidence high for diagnosis.
+2. **HLO drill-down** of exp 50 vs exp 36 step traces. Identify which HLO ops grew by >10 % under scan. Effort S. Confidence medium for finding one more lever.
+3. **exp 52 — flatten inner + outer scans** within each group using `vmap + jit` or by reshaping `[n_blocks, 5, ...]` to `[n_blocks*5, ...]`. Non-obvious given sliding/full heterogeneity; the full layer still needs inline treatment. Effort M, confidence low.
+4. **Leave env gate off default**. Exp 45 compile cache covers the 180-s compile on cache hits; scan's 72.7-s floor only matters on cache misses (code edits). The −11-16 % TPS cost makes scan a dev-loop tool, not a production default.
