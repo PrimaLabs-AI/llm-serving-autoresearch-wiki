@@ -9,12 +9,16 @@ E4B is dense per-layer.
 
 Critical divergences from the torch reference documented inline with
 `# PORT:` comments. The biggest one is attention dispatch: HF uses
-``ALL_ATTENTION_FUNCTIONS[impl]``; we call XLA SDPA (jax.nn.dot_product_attention)
-directly. A splash-Pallas hook is a follow-up (see `_attn_xla_sdpa`).
+``ALL_ATTENTION_FUNCTIONS[impl]``; we call XLA SDPA directly via
+``_attn_xla_sdpa``, or the Pallas `splash_attention` kernel (exp 35) via
+``model.pallas_attention.splash_attention`` when ``JAX_ATTENTION_IMPL=splash``
+is set. Selection is per-call (env var read at forward time), so the same
+compiled module handles both paths across processes.
 """
 from __future__ import annotations
 
 import math
+import os
 from typing import Any, Optional
 
 import jax
@@ -456,13 +460,30 @@ class Gemma4TextAttention(nnx.Module):
             # Note: caller side fills shared_kv_states[layer_idx] after this
             # returns if self.store_full_length_kv.
 
-        # Attention. PORT: XLA SDPA baseline; no splash yet.
-        attn_out = _attn_xla_sdpa(
-            q, k, v, attention_mask,
-            num_key_value_groups=self.num_key_value_groups,
-            scaling=self.scaling,
-            is_causal=True,
-        )  # (B, T, Hq, D)
+        # Attention. Two paths:
+        #   - "xla"    (default): jnp.einsum/softmax SDPA; handles arbitrary
+        #              attention_mask; is_causal=True adds the triangular mask.
+        #   - "splash" (exp 35)  : jax.experimental.pallas.ops.tpu.splash_attention
+        #              via shard_map. No pre-kernel scaling (scaling=1.0 here
+        #              matches splash's no-1/sqrt-d convention). GQA native —
+        #              no _repeat_kv. Causal + sliding-window mask wired into
+        #              the kernel's MaskInfo builder (LocalMask / CausalMask).
+        #              Selected by env var JAX_ATTENTION_IMPL=splash.
+        if os.environ.get("JAX_ATTENTION_IMPL", "xla").lower() == "splash":
+            # Defer import to avoid a hard dependency for the xla path.
+            from .pallas_attention import splash_attention
+            # scaling is 1.0 for Gemma4 (q_norm/k_norm pre-normalize); splash
+            # does not apply 1/sqrt(d) internally either, so this matches.
+            attn_out = splash_attention(
+                q, k, v, sliding_window=self.sliding_window,
+            )  # (B, T, Hq, D)
+        else:
+            attn_out = _attn_xla_sdpa(
+                q, k, v, attention_mask,
+                num_key_value_groups=self.num_key_value_groups,
+                scaling=self.scaling,
+                is_causal=True,
+            )  # (B, T, Hq, D)
 
         # o_proj over concatenated heads.
         attn_out = attn_out.reshape(B, T, self.num_heads * self.head_dim)

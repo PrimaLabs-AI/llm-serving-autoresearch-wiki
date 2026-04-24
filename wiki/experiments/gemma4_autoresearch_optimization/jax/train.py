@@ -120,6 +120,17 @@ def main(argv: Optional[list] = None) -> int:
         mesh = get_mesh("tp", dp=args.dp, tp=args.tp)
         print(f"[mesh] strategy=tp dp={args.dp} tp={args.tp} devices={jax.device_count()}")
 
+    # Register the mesh with the pallas-attention module so the splash
+    # kernel's shard_map sees a concrete Mesh (Mosaic custom-calls cannot be
+    # auto-partitioned). No-op when JAX_ATTENTION_IMPL != "splash".
+    attn_impl = os.environ.get("JAX_ATTENTION_IMPL", "xla").lower()
+    if attn_impl == "splash":
+        from model.pallas_attention import set_mesh as _set_splash_mesh
+        _set_splash_mesh(mesh)
+        print(f"[attn] JAX_ATTENTION_IMPL=splash — pallas splash_attention enabled")
+    else:
+        print(f"[attn] JAX_ATTENTION_IMPL={attn_impl} — XLA SDPA (baseline)")
+
     # Load HF config (text-only sub-config). ----------------------------------
     print(f"[load] {args.model_id} ({args.dtype})")
     t0 = time.perf_counter()
@@ -130,6 +141,21 @@ def main(argv: Optional[list] = None) -> int:
     # Build the NNX model with random init (will be overwritten by loader).
     rngs = nnx.Rngs(args.seed)
     model = Gemma4ForCausalLM(text_cfg, dtype=jnp_dtype, rngs=rngs)
+
+    # Pre-build splash kernels (one per (sliding_window, head_dim) combo).
+    # This materializes MaskInfo at top-level so the lru_cache entries aren't
+    # captured inside the top-level jitted_step's trace (which would leak
+    # tracers on subsequent step-1 retrace). See pallas_attention.py docstring.
+    if attn_impl == "splash":
+        from model.pallas_attention import _build_splash_kernel as _pre_build
+        n_q = text_cfg.num_attention_heads
+        sw = text_cfg.sliding_window
+        sliding_hd = text_cfg.head_dim
+        full_hd = text_cfg.global_head_dim or text_cfg.head_dim
+        _pre_build(args.seq_len, n_q, sw, sliding_hd)
+        _pre_build(args.seq_len, n_q, None, full_hd)
+        print(f"[attn] pre-built splash kernels for seq={args.seq_len} "
+              f"num_q_heads={n_q} sliding={sw}@hd={sliding_hd} full@hd={full_hd}")
     stats = load_hf_weights(model, args.model_id, dtype=jnp_dtype, verbose=True)
     print(f"[load] weights: assigned={stats['assigned']} "
           f"skipped_modality={stats['skipped_modality']} "

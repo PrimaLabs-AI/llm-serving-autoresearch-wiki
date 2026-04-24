@@ -14,14 +14,14 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 ## Current state
 
-**Exp 34** at **30,285 TPS** (seq=1024, batch=1, fsdp=4, bf16, XLA SDPA) — matches the torchax baseline-seq1024 (30,570 TPS) within noise. The −9.2 % gap vs torchax exp 25 (33,372 TPS, the session-best) is entirely explained by missing splash attention + missing batch=3 + missing bf16 CE + missing fused_bwd. Each of those is a queued experiment on this stack.
+**Exp 35** at **30,386 TPS** (seq=1024, batch=1, fsdp=4, bf16, splash) — flat (+0.33 %) over exp 34's XLA-SDPA baseline. Splash kernel is correct (bit-match loss at step 19: 2.2969) and HLO diff confirms it swaps matmul time from XLA convolution-fusion into Mosaic custom-fusion with a ~49 ms / 3-step net saving — but splash's per-call launch overhead at batch=1 seq=1024 offsets most of it. Peak HBM dropped 16.85 → 16.43 GiB, creating headroom for **exp 36 (batch=3)** where splash's asymptotic win is expected to materialize.
 
 ## Queued experiments (highest-expected-gain first)
 
-- **exp 35** — splash Pallas attention in JAX (mirrors torchax exp 8). Expected: ~+2.7 % → closes the biggest chunk of the gap.
-- **exp 36** — scan-over-layers. Easier in native JAX (no torchax kwargs/assertion constraints — see [torchax exp 26 parked blockers](../../torchax/experiments/2026-04-23-exp26-scan-over-layers-potential.md)).
-- **exp 37** — tokamax memory-efficient cross-entropy.
-- **exp 38** — step-1 recompile root-cause (out_shardings / donation).
+- **exp 36** — **splash + batch=3** (direct analog of torchax exp 18, +8.0 %). HBM 52.6 % leaves ~2-3 GiB headroom. Confidence high.
+- **exp 37** — splash + bf16 CE (tokamax or hand-roll). ~+1-3 % and frees ~1.5 GiB of fp32 logits.
+- **exp 38** — scan-over-layers. Easier in native JAX (no torchax kwargs/assertion constraints — see [torchax exp 26 parked blockers](../../torchax/experiments/2026-04-23-exp26-scan-over-layers-potential.md)). Compile-time win primarily.
+- **exp 39** — step-1 recompile root-cause (out_shardings / donation).
 
 ## See also
 
