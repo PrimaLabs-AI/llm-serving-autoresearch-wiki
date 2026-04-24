@@ -43,7 +43,7 @@ Individual experiments for this program live as dated files in **this folder**: 
 
 ## How to run
 
-Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary). The runbook below reproduces the [2026-04-22 baseline](2026-04-22-baseline.md).
+Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary). The runbook below reproduces the [2026-04-22 baseline](torchax/experiments/2026-04-22-baseline.md).
 
 ### Prerequisites
 
@@ -94,7 +94,7 @@ python -m train \
   --profile_steps 5 6 7
 ```
 
-**Expected output on v6e-4**: step 0 + step 1 each compile for ~150 s; steady-state from step 2 onward is **~134 ms/step** at seq=1024 (the [2026-04-22 baseline](2026-04-22-baseline.md) reports the full seq-length sweep). Loss descends from ~3.9 to ~2.0 over 10 steps. Profile traces for steps 5–7 land under `$PROFILE_DIR`.
+**Expected output on v6e-4**: step 0 + step 1 each compile for ~150 s; steady-state from step 2 onward is **~134 ms/step** at seq=1024 (the [2026-04-22 baseline](torchax/experiments/2026-04-22-baseline.md) reports the full seq-length sweep). Loss descends from ~3.9 to ~2.0 over 10 steps. Profile traces for steps 5–7 land under `$PROFILE_DIR`.
 
 ### Key flags
 
@@ -121,7 +121,7 @@ python -m train \
 After a run:
 
 1. Pick a slug: `<YYYY-MM-DD>-<short-description>.md` (e.g. `2026-04-24-splash-attention.md`).
-2. Create the file next to this README (in `wiki/experiments/gemma4_autoresearch_optimization/`) — follow the `experiment` page template in [`SCHEMA.md`](../../../SCHEMA.md). The [2026-04-22 baseline](2026-04-22-baseline.md) is the working example.
+2. Create the file next to this README (in `wiki/experiments/gemma4_autoresearch_optimization/`) — follow the `experiment` page template in [`SCHEMA.md`](../../../SCHEMA.md). The [2026-04-22 baseline](torchax/experiments/2026-04-22-baseline.md) is the working example.
 3. **Reference the profile**: the profile dir path goes in both `## Profile` and `## Sources`. Profiles are gitignored (`raw/profiles/*` in `.gitignore`), so the experiment page is the only lineage link on disk.
 4. Append a `log.md` entry.
 
@@ -132,8 +132,8 @@ The agent-facing protocol for this program lives in [`program.md`](program.md) �
 To start a session:
 
 1. Read [`program.md`](program.md) end-to-end (~10 min). Resolve every fixed binding (hardware, conda env, baseline command, libtpu version, xprof_mcp server location).
-2. Tail [`OBSERVATIONS.md`](OBSERVATIONS.md) for the latest state of the loop (what was kept, what was discarded, open follow-ups).
-3. Tail [`RESULTS.tsv`](RESULTS.tsv) for the current ledger row and `status: keep` baseline.
+2. Tail [`OBSERVATIONS.md`](torchax/experiments/OBSERVATIONS.md) for the latest state of the loop (what was kept, what was discarded, open follow-ups).
+3. Tail [`RESULTS.tsv`](torchax/experiments/RESULTS.tsv) for the current ledger row and `status: keep` baseline.
 4. Pick the next hypothesis per `program.md` §"The experiment loop", priority order (profile-driven → follow-up → wiki-driven → heuristics).
 5. Run, profile, symlink, query xprof_mcp, diff vs baseline, write up per the template in `program.md`.
 6. Decision + commit or revert per §"Decision". Append to the ledger + log.
@@ -143,7 +143,7 @@ The methodology itself is mutable — improvements surfaced during experimentati
 
 ### Known issues encountered by the scaffold (baseline run)
 
-See the "Scaffold changes applied during this run" table on [2026-04-22-baseline.md](2026-04-22-baseline.md). Short list:
+See the "Scaffold changes applied during this run" table on [2026-04-22-baseline.md](torchax/experiments/2026-04-22-baseline.md). Short list:
 - HF checkpoint is multimodal-only — `Gemma4ForCausalLM.from_pretrained` silently re-initializes weights. Load `Gemma4ForConditionalGeneration` and monkey-patch the forward (already done in `train.py`).
 - NaN loss at seq≥2048 even with `final_logit_softcapping`; correctness work pending.
 - Step 1 recompiles (~150 s, same as step 0). Low-effort follow-up: explicit `in_shardings` on `jax.jit`.
@@ -210,11 +210,11 @@ Ranked candidates consolidated from Wave 1/2 findings, the [xprof-mcp TPU optimi
 
 ## History
 
-- **2026-04-22**: Program filed. First baseline captured — see [2026-04-22-baseline.md](2026-04-22-baseline.md). Hardware was v6e-4 (not v6e-8 as the scaffold assumed). Steady-state at seq=2048, batch=1, FSDP=4: **249 ms/step, ~33k tokens/sec, ~26% MFU** (corrected from earlier `6PT` overestimate that claimed 44%). Loss is NaN at seq=2048 but clean at seq≤1024 — a correctness bug to fix before the first perf hypothesis lands.
+- **2026-04-22**: Program filed. First baseline captured — see [2026-04-22-baseline.md](torchax/experiments/2026-04-22-baseline.md). Hardware was v6e-4 (not v6e-8 as the scaffold assumed). Steady-state at seq=2048, batch=1, FSDP=4: **249 ms/step, ~33k tokens/sec, ~26% MFU** (corrected from earlier `6PT` overestimate that claimed 44%). Loss is NaN at seq=2048 but clean at seq≤1024 — a correctness bug to fix before the first perf hypothesis lands.
 - **2026-04-23**: 20-step confirmation run at seq=1024. Loss **3.93 → ~2.0** (noisy at global batch=4, but trending). Steady-state at seq=1024: **134.4 ± 0.5 ms/step**, ~30.5k tokens/sec.
-- **2026-04-23**: [Exp 1](2026-04-23-exp1-async-collective-flags-rejected.md) — async-collective XLA flag bundle (`--xla_tpu_enable_latency_hiding_scheduler`, `--xla_tpu_enable_async_collective_fusion`, `+fuse_all_gather`, `+multiple_steps`) via `LIBTPU_INIT_ARGS`. **REFUTED**: 134.4 → 168.3 ms (+25 % regression). Scheduler reordered collectives but broke compute-fusion memory locality (convolution fusion +2.5× bytes, loop fusion +1.9× bytes). Correctness preserved. Flags parked, will revisit once larger effective batch is reachable.
-- **2026-04-23**: [Exp 2](2026-04-23-exp2-pin-out-shardings-rejected.md) — attempted to pin `out_shardings` on `jax.jit` to fix the step-1 recompile. **CRASH** at trace time: tied-weight (`lm_head` ↔ `embed_tokens`) sharding plumbing collapsed to single-device for the duplicate key; jit rejected the mismatch. Reverted. Step-1 recompile remains open (~150 s/run iteration overhead).
-- **2026-04-23**: Formalized the loop into [program.md](program.md) + [RESULTS.tsv](RESULTS.tsv) + [OBSERVATIONS.md](OBSERVATIONS.md). README trimmed to a runbook + pointer; the agent-facing protocol now lives in `program.md`. Experiments 1 and 2 retroactively transcribed to the ledger + observation log.
+- **2026-04-23**: [Exp 1](torchax/experiments/2026-04-23-exp1-async-collective-flags-rejected.md) — async-collective XLA flag bundle (`--xla_tpu_enable_latency_hiding_scheduler`, `--xla_tpu_enable_async_collective_fusion`, `+fuse_all_gather`, `+multiple_steps`) via `LIBTPU_INIT_ARGS`. **REFUTED**: 134.4 → 168.3 ms (+25 % regression). Scheduler reordered collectives but broke compute-fusion memory locality (convolution fusion +2.5× bytes, loop fusion +1.9× bytes). Correctness preserved. Flags parked, will revisit once larger effective batch is reachable.
+- **2026-04-23**: [Exp 2](torchax/experiments/2026-04-23-exp2-pin-out-shardings-rejected.md) — attempted to pin `out_shardings` on `jax.jit` to fix the step-1 recompile. **CRASH** at trace time: tied-weight (`lm_head` ↔ `embed_tokens`) sharding plumbing collapsed to single-device for the duplicate key; jit rejected the mismatch. Reverted. Step-1 recompile remains open (~150 s/run iteration overhead).
+- **2026-04-23**: Formalized the loop into [program.md](program.md) + [RESULTS.tsv](torchax/experiments/RESULTS.tsv) + [OBSERVATIONS.md](torchax/experiments/OBSERVATIONS.md). README trimmed to a runbook + pointer; the agent-facing protocol now lives in `program.md`. Experiments 1 and 2 retroactively transcribed to the ledger + observation log.
 
 ---
 

@@ -20,7 +20,8 @@ Single-environment program (no `program-<env>.md` split yet). These are the fact
 | HLO dump directory | `raw/profiles/<YYYY-MM-DD>-<slug>/hlo/` (colocated). |
 | xprof_mcp server | `xprof --logdir=gs://tpu-pytorch-alekseyv-us-central2/autoresearch --port=8791` (GCS-backed). To make a captured profile queryable in the **xprof browser UI**: upload the session dir to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/<run-name>/` (with the `plugins/profile/...` subtree inside), then `mcp__xprof__list_runs` reports it and it appears in the dropdown at `http://localhost:8791/`. Historical local path `/mnt/disks/persist/torch-tpu/dump_folder/profiles/plugins/profile/<name>/` still works for older symlinked runs but is not the current server logdir. |
 | xprof browser URL | **Per-run direct URL**: `http://localhost:8791/?run=<run-name>` (TensorBoard-style — opens the interactive trace viewer for that run). Every experiment page **must** include this URL under `## Profile` alongside the on-disk path so the reviewer can click straight through to the visual inspector. Convention for `<run-name>`: the last path component of the profile directory, e.g. `2026-04-23-gemma4-exp25-splash-block1024`. |
-| Experiment page slug | `<YYYY-MM-DD>-exp<NN>-<short-slug>-<verdict-suffix>.md` in this folder, where `<verdict-suffix>` ∈ { `accepted`, `rejected`, `potential` } per the rule below. The original baseline `<YYYY-MM-DD>-baseline.md` has no verdict suffix (it is the reference, not a hypothesis test). |
+| Stack dimension | Two parallel execution stacks exist: **torchax** (HuggingFace PyTorch wrapped via torchax — the original path, exp 1–33 + the 2026-04-22 baseline) and **jax** (from-scratch Flax NNX port — exp 34+). Writeups live under `torchax/experiments/` and `jax/experiments/` respectively; each folder has its own `OBSERVATIONS.md` and `RESULTS.tsv`. Experiment numbers continue globally across both stacks (commit history stays linear); the folder path + slug disambiguates (e.g. `torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md` vs `jax/experiments/2026-04-23-exp34-jax-baseline-accepted.md`). Include the stack word in the slug when the experiment could run on either stack (e.g. `exp35-jax-splash-attention`). |
+| Experiment page slug | `<YYYY-MM-DD>-exp<NN>-<short-slug>-<verdict-suffix>.md` in `<stack>/experiments/`, where `<verdict-suffix>` ∈ { `accepted`, `rejected`, `potential` } per the rule below. The original baseline `2026-04-22-baseline.md` has no verdict suffix (it is the reference, not a hypothesis test). |
 | Experiment verdict suffix | **Rule**: once an experiment's verdict is final, the page filename MUST end with one of three suffixes before `.md`, reflecting the `RESULTS.tsv` status. `-accepted` for `keep` / `supported` (hypothesis confirmed and useful). `-rejected` for `discard` / `refuted` / `crash` / `invalid` (hypothesis disconfirmed or unusable). `-potential` for `parked` / `inconclusive` (hypothesis not settled — revisit when conditions change). The suffix is part of the filename at file-creation time; rename on status change. This makes directory listings of `wiki/experiments/<program>/` self-summarizing. |
 | Timeout per experiment | **15 minutes** wall-clock. Kill and mark `crash` otherwise. |
 
@@ -160,18 +161,18 @@ compile_seconds: <step 0 wall time — diagnostic only>
 config:          <key flags / code change vs baseline, one-line>
 ```
 
-## Ledger — `RESULTS.tsv`
+## Ledger — `<stack>/experiments/RESULTS.tsv`
 
-Append one row per run (tab-separated, gitignored):
+One ledger per stack (`torchax/experiments/RESULTS.tsv` and `jax/experiments/RESULTS.tsv`). Append one row per run (tab-separated, gitignored):
 
 ```
 exp_id	date	tps	mfu_percent	step_time_ms	peak_hbm_gib	config	status	description
 ```
 
-- `exp_id` — `exp<NN>` (or `baseline`)
-- Others as per template. `status` ∈ `{keep, discard, crash}`.
+- `exp_id` — `exp<NN>` (or `baseline`). Numbering continues globally across both stacks — use the folder path to disambiguate which stack the row belongs to.
+- Others as per template. `status` ∈ `{keep, discard, crash, parked, inconclusive}`, and the experiment-page filename's verdict suffix (`-accepted` / `-rejected` / `-potential`) must match.
 
-## Observations log — `OBSERVATIONS.md`
+## Observations log — `<stack>/experiments/OBSERVATIONS.md`
 
 One section per experiment. **The experiment page** (`<YYYY-MM-DD>-exp<NN>-<slug>-<verdict-suffix>.md` — see "Experiment verdict suffix" rule in the Fixed bindings table) remains the canonical per-experiment file per `SCHEMA.md`; `OBSERVATIONS.md` is a **skim-and-reason** aggregation log for the human reviewer to quickly thread through the session's arc.
 

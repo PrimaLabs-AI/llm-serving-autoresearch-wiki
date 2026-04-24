@@ -1,0 +1,2 @@
+exp_id	date	tps	mfu_percent	step_time_ms	peak_hbm_gib	config	status	description
+exp34	2026-04-23	30285	n/a	135.24	TBD	seq=1024|batch=1|fsdp=4|bf16|jax-native-nnx-port|xla-sdpa-attn	keep	native-JAX (Flax NNX) port of Gemma4 E4B with wiki-native trainer; 30,285 TPS vs torchax 30,570 baseline-seq1024 (-0.9% noise), -9.2% vs exp25 (no splash yet); loss trajectory 3.92->2.30 matches torchax reference within bf16 noise; per-layer parity vs HF PyTorch PASSES (max err 0.031 bf16); writeup 2026-04-23-exp34-jax-baseline-accepted.md
