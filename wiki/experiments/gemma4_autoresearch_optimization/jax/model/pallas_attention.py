@@ -69,18 +69,68 @@ def is_enabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _splash_env_int(name: str, default_cap: int, seq_len: int) -> int:
+    """Read an env override clamped to seq_len (so `block=min(x, seq_len)`)."""
+    v = os.environ.get(name)
+    if v is None:
+        return min(default_cap, seq_len)
+    try:
+        return min(int(v), seq_len)
+    except ValueError:
+        return min(default_cap, seq_len)
+
+
+def _splash_env_layout(name: str, default: str = "SEQ_MINOR") -> str:
+    """Read a QKVLayout override: SEQ_MINOR | HEAD_DIM_MINOR."""
+    v = os.environ.get(name, default).upper()
+    if v not in ("SEQ_MINOR", "HEAD_DIM_MINOR"):
+        return default
+    return v
+
+
+def _splash_env_bool(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.lower() in ("1", "true", "yes", "on")
+
+
+def _splash_config_key() -> tuple:
+    """Tuple of all env-overridable splash params for lru_cache keying.
+
+    Read at cache-key time (cheap). Every value has a default matching
+    exp 36's current-best config, so unset env = exp 36 behavior.
+    """
+    return (
+        os.environ.get("SPLASH_BLOCK_Q", "1024"),
+        os.environ.get("SPLASH_BLOCK_KV", "1024"),
+        os.environ.get("SPLASH_BLOCK_KV_COMPUTE", "1024"),
+        os.environ.get("SPLASH_BLOCK_Q_DKV", "1024"),
+        os.environ.get("SPLASH_BLOCK_KV_DKV", "1024"),
+        os.environ.get("SPLASH_BLOCK_KV_DKV_COMPUTE", "1024"),
+        os.environ.get("SPLASH_USE_FUSED_BWD", "1"),
+        os.environ.get("SPLASH_QKV_LAYOUT", "SEQ_MINOR"),
+    )
+
+
 @functools.lru_cache(maxsize=64)
 def _build_splash_kernel(
     seq_len: int,
     num_q_heads: int,
     sliding_window: Optional[int],
     head_dim: int,
+    config_key: tuple = (),  # exp 48: env-override splash params keyed here
 ):
     """Build a splash-attention MHA kernel specialized for this shape set.
 
     The cache key includes head_dim because Gemma 4 has two variants
     (sliding: 256, full: 512). The kernel's BlockSizes struct is otherwise
     head_dim-agnostic.
+
+    exp 48: block sizes / layout / fused_bwd can be overridden via env
+    vars (SPLASH_BLOCK_Q, SPLASH_BLOCK_KV, ..., SPLASH_QKV_LAYOUT,
+    SPLASH_USE_FUSED_BWD). See `_splash_config_key()` for the full list.
+    Defaults preserve exp 36's winning config.
 
     IMPORTANT: `make_splash_mha_single_device` internally materializes the
     MaskInfo via `jnp.array(...)`. If this runs inside a traced jit context
@@ -96,9 +146,15 @@ def _build_splash_kernel(
         splash_attention_mask as sa_mask,
     )
 
-    block_q = min(1024, seq_len)
-    block_kv = min(1024, seq_len)
-    block_kv_compute = min(1024, seq_len)
+    block_q = _splash_env_int("SPLASH_BLOCK_Q", 1024, seq_len)
+    block_kv = _splash_env_int("SPLASH_BLOCK_KV", 1024, seq_len)
+    block_kv_compute = _splash_env_int("SPLASH_BLOCK_KV_COMPUTE", 1024, seq_len)
+    block_q_dkv = _splash_env_int("SPLASH_BLOCK_Q_DKV", 1024, seq_len)
+    block_kv_dkv = _splash_env_int("SPLASH_BLOCK_KV_DKV", 1024, seq_len)
+    block_kv_dkv_compute = _splash_env_int("SPLASH_BLOCK_KV_DKV_COMPUTE", 1024, seq_len)
+    use_fused_bwd = _splash_env_bool("SPLASH_USE_FUSED_BWD", True)
+    layout_name = _splash_env_layout("SPLASH_QKV_LAYOUT", "SEQ_MINOR")
+    qkv_layout = getattr(sa_kernel.QKVLayout, layout_name)
 
     # Fused bwd kernel omits block_q_dq / block_kv_dq (see torchax
     # pallas_attention.py for the exp-16 → exp-17 history).
@@ -106,13 +162,13 @@ def _build_splash_kernel(
         block_q=block_q,
         block_kv=block_kv,
         block_kv_compute=block_kv_compute,
-        block_q_dkv=min(1024, seq_len),
-        block_kv_dkv=min(1024, seq_len),
-        block_kv_dkv_compute=min(1024, seq_len),
-        use_fused_bwd_kernel=True,
-        q_layout=sa_kernel.QKVLayout.SEQ_MINOR,
-        k_layout=sa_kernel.QKVLayout.SEQ_MINOR,
-        v_layout=sa_kernel.QKVLayout.SEQ_MINOR,
+        block_q_dkv=block_q_dkv,
+        block_kv_dkv=block_kv_dkv,
+        block_kv_dkv_compute=block_kv_dkv_compute,
+        use_fused_bwd_kernel=use_fused_bwd,
+        q_layout=qkv_layout,
+        k_layout=qkv_layout,
+        v_layout=qkv_layout,
     )
 
     if sliding_window is not None and sliding_window > 0:
@@ -162,7 +218,7 @@ def splash_attention(
 
     b, num_q_heads, seq_len, head_dim = q.shape
 
-    kernel = _build_splash_kernel(seq_len, num_q_heads, sliding_window, head_dim)
+    kernel = _build_splash_kernel(seq_len, num_q_heads, sliding_window, head_dim, _splash_config_key())
 
     def _inner(qj, kj, vj):
         # kernel expects per-example (rank-3); vmap over the batch axis.

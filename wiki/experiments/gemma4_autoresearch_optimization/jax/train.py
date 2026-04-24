@@ -148,14 +148,25 @@ def main(argv: Optional[list] = None) -> int:
     # tracers on subsequent step-1 retrace). See pallas_attention.py docstring.
     if attn_impl == "splash":
         from model.pallas_attention import _build_splash_kernel as _pre_build
+        from model.pallas_attention import _splash_config_key
         n_q = text_cfg.num_attention_heads
         sw = text_cfg.sliding_window
         sliding_hd = text_cfg.head_dim
         full_hd = text_cfg.global_head_dim or text_cfg.head_dim
-        _pre_build(args.seq_len, n_q, sw, sliding_hd)
-        _pre_build(args.seq_len, n_q, None, full_hd)
+        cfg_key = _splash_config_key()
+        _pre_build(args.seq_len, n_q, sw, sliding_hd, cfg_key)
+        _pre_build(args.seq_len, n_q, None, full_hd, cfg_key)
         print(f"[attn] pre-built splash kernels for seq={args.seq_len} "
               f"num_q_heads={n_q} sliding={sw}@hd={sliding_hd} full@hd={full_hd}")
+        # Log the active splash config for reproducibility (exp 48+)
+        import os as _os
+        _splash_env_snapshot = {k: _os.environ.get(k) for k in (
+            "SPLASH_BLOCK_Q", "SPLASH_BLOCK_KV", "SPLASH_BLOCK_KV_COMPUTE",
+            "SPLASH_BLOCK_Q_DKV", "SPLASH_BLOCK_KV_DKV", "SPLASH_BLOCK_KV_DKV_COMPUTE",
+            "SPLASH_USE_FUSED_BWD", "SPLASH_QKV_LAYOUT",
+        ) if _os.environ.get(k) is not None}
+        if _splash_env_snapshot:
+            print(f"[attn] splash overrides: {_splash_env_snapshot}")
     stats = load_hf_weights(model, args.model_id, dtype=jnp_dtype, verbose=True)
     print(f"[load] weights: assigned={stats['assigned']} "
           f"skipped_modality={stats['skipped_modality']} "
