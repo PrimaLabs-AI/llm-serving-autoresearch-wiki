@@ -277,3 +277,50 @@ Exp 8 (splash attention) kicked off as the first Pallas experiment.
 ### approach update — 2026-04-23 — initial program.md landing
 
 This program.md landed at the start of the formal session, after the baseline + exp01 + exp02 were already run. Those three ran under a lighter-weight "optimization loop procedure" section in the program `README.md`; that section is now replaced by a pointer to this file. Future experiments (exp03 onward) follow this protocol. The pre-program.md experiments are retroactively transcribed into `RESULTS.tsv` and this `OBSERVATIONS.md` for continuity.
+
+### exp34 — native-JAX (Flax NNX) port baseline — `keep`
+
+Canonical page: [2026-04-23-exp34-jax-baseline-accepted.md](2026-04-23-exp34-jax-baseline-accepted.md).
+
+**Config**:
+- Brand-new `jax/` trainer: `wiki/experiments/gemma4_autoresearch_optimization/jax/{train.py,data.py,model/{modeling_gemma4,weight_loader,sharding}.py}` (~2.3 kLOC). Runs the same model config via a native Flax NNX implementation (not HF PyTorch under torchax dispatch).
+- Command (from `jax/`): `python -m train --batch_size 1 --seq_len 1024 --steps 20 --profile_dir $WIKI_ROOT/raw/profiles/2026-04-23-gemma4-jax-baseline --profile_steps 10 11 12`.
+- Profile: `raw/profiles/2026-04-23-gemma4-jax-baseline/` (198 MB).
+
+**Hypothesis**:
+A native-JAX port with XLA-SDPA attention should match the torchax baseline-seq1024 (30,570 TPS) within noise — establishing a clean anchor for future JAX-native optimizations (splash, tokamax, scan-over-layers) that are cheaper to wire from the JAX side than through torchax.
+
+**Changes made**:
+- New code: `jax/model/modeling_gemma4.py` ports `Gemma4{RMSNorm, TextScaledWordEmbedding, TextRotaryEmbedding, TextMLP, TextAttention, TextDecoderLayer, TextModel, ForCausalLM}` as Flax NNX modules. Text-only; skips audio/vision/multimodal/MoE.
+- New loader: `jax/model/weight_loader.py` reads HF safetensors into the NNX Param tree, drops audio/vision tensors, drops shared-KV k_proj/v_proj/k_norm/v_norm (matching HF's `_keys_to_ignore_on_load_unexpected`). 665 assigned, 54 shared-KV skipped, 2 missing (audio/vision embed connectors).
+- New sharding plan: `jax/model/sharding.py` — FSDP 1D same rule as torchax (largest divisible dim). All 623 ≥2D params sharded; 42 scalar `layer_scalar` buffers replicated.
+- New trainer: `jax/train.py` — CLI parity with `torchax/train.py`, identical summary block, identical CE loss + optax.adamw + selective remat.
+- Correctness harnesses: `jax/tools/parity_{layer,attn,check}.py`. The layer check (RMSNorm, MLP, RoPE, full decoder layer for sliding + full layer types) is the canonical one — ~30 s on CPU.
+
+**Expected outcome**: 30,570 TPS ±1 % (noise), loss 3.93 → 2.04 ish, step 0 compile ~150 s.
+
+**Actual outcome**:
+- TPS: **30,285** (-0.9 % vs torchax baseline-seq1024; within noise).
+- Step time (median steps 13-19): **135.24 ms** (vs torchax 134.4 ms, +0.6 %).
+- Step 0 compile: 141.92 s. Step 1 recompile: 141.92 s (identical long-compile pattern; same open issue as exp 2).
+- Loss trajectory step 0 → 19: **3.9219 → 2.2969**, matches torchax 3.93 → ~2.0 within bf16 reorder noise.
+- Per-layer parity vs HF PyTorch (bf16): RMSNorm = 0, MLP = 0.0011, RoPE = 0, full decoder layer (sliding + full) = 0.031. PASS.
+
+**Profile signals**:
+- Profile captured at steps 10-12. Not yet analyzed in detail (follow-up); visual inspection deferred to the first optimization experiment that needs to target a specific op.
+
+**Analysis**:
+Three HF-Gemma4 semantics details would have been silent bugs:
+1. `Gemma4RMSNorm` is `weight * normed` (weight init = ones), **NOT** `(1 + weight) * normed` (Gemma 2/3 convention). Task-spec's `init-zero + (1+weight)` was wrong for Gemma 4.
+2. `Gemma4TextAttention.scaling = 1.0`, NOT `1/sqrt(head_dim)` — the per-head q_norm/k_norm already normalize per-head. This bug produced saturated softmax (pos 0 got ~1.0, everything else 0) — caught by position 0 matching but all other positions diverging.
+3. `num_kv_shared_layers=18`: 42-layer E4B last 18 layers read KV from earlier same-type layer. The HF checkpoint still carries their k_proj/v_proj/k_norm/v_norm weights — HF's `_keys_to_ignore_on_load_unexpected` drops them at load. Our NNX loader needs the same drop.
+
+The -0.9 % vs torchax is within measurement noise; essentially identical. Against exp 25's 33,372 TPS (session-best: splash + batch=3 + bf16-CE + fused-bwd + selective-remat), we're -9.2 %, all of which is attributable to **not yet having splash attention** on the JAX side. That's the first obvious follow-up.
+
+**Decision**: `keep`. First native-JAX trunk point; future JAX-native experiments fork from here.
+
+**Follow-ups**:
+- **Exp 35 (next)**: wire `jax.experimental.pallas.ops.tpu.splash_attention` into `jax/model/modeling_gemma4.py` analogous to `torchax/model/pallas_attention.py`. Expected: match exp 25's 33,372 TPS (+10 %), unlock batch=3.
+- **Exp 36**: `flax.nnx.scan` over the 42 layers — but E4B is heterogeneous (sliding/full with different head_dim), so needs two sub-scans.
+- **Exp 37**: tokamax `linear_softmax_cross_entropy_loss` directly on the JAX side (no torchax interop needed).
+- **Exp 38**: root-cause the step-1 recompile. NNX's `split/merge` should make input-pytree shape stable across steps; still seeing ~142 s recompile. Likely XLA input-layout specialization.
