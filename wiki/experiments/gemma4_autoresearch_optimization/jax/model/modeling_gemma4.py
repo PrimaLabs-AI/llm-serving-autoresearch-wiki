@@ -722,6 +722,25 @@ class Gemma4TextModel(nnx.Module):
         }
         masks = self._build_masks(T, position_ids, hidden_states.dtype)
 
+        # Exp 49: env-gated scan-over-layers dispatch. Default off => the exp-36
+        # Python for-loop below runs as baseline. Set JAX_SCAN_LAYERS=1 to take
+        # the two-level scan path (compile-time win; TPS within ±0.5 %).
+        if os.environ.get("JAX_SCAN_LAYERS") == "1":
+            from .scan_layers import collect_stacked_weights, scan_layers as _scan_layers_fn
+            attn_impl = os.environ.get("JAX_ATTENTION_IMPL", "xla").lower()
+            stacked = collect_stacked_weights(list(self.layers), list(self.config.layer_types))
+            hidden_states = _scan_layers_fn(
+                stacked,
+                hidden_states,
+                per_layer_inputs,
+                position_embeddings,
+                masks,
+                self.config,
+                attn_impl,
+            )
+            hidden_states = self.norm(hidden_states)
+            return hidden_states
+
         shared_kv_states: dict[int, tuple[jax.Array, jax.Array]] = {}
         for i, layer in enumerate(self.layers):
             layer_type = self.config.layer_types[i]

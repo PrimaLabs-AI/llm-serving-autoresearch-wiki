@@ -22,12 +22,14 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 **Exp 47** (marin/levanter fused linear+softcap+CE Pallas kernel) closes exp 43's softcap gap — levanter's `fused_cross_entropy_loss_and_logsumexp_penalty` applies `sc * tanh(logits/sc)` inline on each VMEM logits-tile before the streaming softmax, so `[B, S, V]` logits never materialize — **but regresses −5.61 %** (34,614 → 32,671 TPS, step time 355.0 → 376.1 ms). Parity passes in bf16 (|diff| 0.048 vs 0.05 tol) and smoke step-4 loss matches exp 36 within 0.47 %. Root cause: CE in exp 36 was <3 % of step time and XLA-fused tight with lm_head + softcap + log_softmax; swapping it for a Pallas custom-call adds ~15 ms of boundary overhead + a 1.31-GiB `w_hv` all-gather forced by the mandatory shard_map wrapper (Mosaic custom-calls cannot be auto-partitioned and the kernel needs replicated `[H, V]` weight). Same "Pallas-custom-call tax" pattern as torchax exp 33 (Pallas RMSNorm). Durable: `JAX_CE_IMPL=levanter` gate + import shim + parity harness + `return_hidden` seam on `Gemma4ForCausalLM`. See [2026-04-24-exp47-jax-levanter-ce-rejected.md](2026-04-24-exp47-jax-levanter-ce-rejected.md).
 
+**Exp 49** (scan-over-layers, `JAX_SCAN_LAYERS=1`) replaced the 42-iter Python for-loop in `Gemma4TextModel.__call__` with two nested `jax.lax.scan`s (outer over 7 super-blocks, inner over 5 sliding layers per block; 1 full-attention layer per block inline). **Compile step-0 drops 180 s → 69.3 s (−61.5 %, 2.6× faster)** — durable compile-time win. **TPS regresses −21.2 %** (34,614 → 27,290), MFU 23.05 % → 18.17 %. Loss match clean: step 4 +0.5 %, step 19 +0.5 % (within bf16 reorder noise). Regression from wasted zero-stub matmuls on 18 KV-shared layers + per-layer `jax.checkpoint` forced inside scan body (prevents a 35-GiB activation-stack OOM) + splash+shard_map nested inside scan limiting XLA collective scheduling. **Env gate off by default**; code on main for future dev-loop use where compile-budget matters more than TPS (e.g. iterating on HLO-changing edits with cache misses). See [2026-04-24-exp49-jax-scan-layers-potential.md](2026-04-24-exp49-jax-scan-layers-potential.md).
+
 ## Queued experiments (highest-expected-gain first)
 
 - **exp 38** — **collective-permute-done investigation**. 12.1 % of step time at b=3 (549 ms/3-step); `in_shardings` / `out_shardings` audit on the jitted step might reclaim half. Expected +5–6 %. Confidence medium. **Now highest-expected-value open hypothesis.**
 - **exp 39** — **Pallas RMSNorm kernel** (210 calls/step, single-HBM-pass). Expected +3–8 % on `loop fusion`. Effort M.
-- **exp 40** — scan-over-layers. Easier in native JAX. Compile-time win primarily (step 0: 167 s → ~5 s).
 - **exp 41** — b=4. Gated on exp 38 landing; 3.80 GiB free today, b=4 adds ~3.5 GiB.
+- **exp 50 / exp 51** — scan-path follow-ups (cond-dispatched shared layers, relaxed remat). Only worth it if a production reason to run the scan path appears. Exp 36 (for-loop) remains default.
 
 ## See also
 

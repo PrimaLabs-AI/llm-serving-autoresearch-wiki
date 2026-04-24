@@ -269,3 +269,53 @@ See [2026-04-24-exp47-jax-levanter-ce-rejected.md](2026-04-24-exp47-jax-levanter
 2. **V-sharded fused CE kernel variant**. Accept `w_hv` with `P(None, 'fsdp')` sharding, do per-shard partial `logsumexp`, all-reduce the partial `lse` across fsdp inside the kernel boundary, emit the final NLL. Removes the 1.31 GiB all-gather. Kernel-edit, not an integration fix. Effort M, confidence low (XLA's AllGatherMatmul fusion may already be doing this optimally).
 3. **Tune block sizes** on v6e-specific Gemma4 shapes. Sweep `(b, h, v)` via parity harness + 2-min benchmark loops. Unlikely to flip the verdict (the tax is structural) but could reclaim 1–3 %.
 4. **Unchanged from exp 36 follow-ups**: `collective-permute-done` audit → Pallas RMSNorm → scan-over-layers.
+
+## exp 49 — scan-over-layers in JAX stack (POTENTIAL, compile -61.5%, TPS -21.2%)
+
+See [2026-04-24-exp49-jax-scan-layers-potential.md](2026-04-24-exp49-jax-scan-layers-potential.md) for the full page.
+
+**Config**:
+- Command delta from exp 36: `JAX_SCAN_LAYERS=1` env gate added. Existing `JAX_ATTENTION_IMPL=splash`, `--batch_size 3`, `--seq_len 1024` unchanged.
+- New file: `jax/model/scan_layers.py` (551 LOC). Wired into `Gemma4TextModel.__call__` via a 17-LOC env-gated dispatch.
+- Profile path: [`raw/profiles/2026-04-24-gemma4-jax-exp49-scan-layers/`](../../../../../raw/profiles/2026-04-24-gemma4-jax-exp49-scan-layers/)
+- **Profile browser URL**: http://localhost:8791/?run=2026-04-24-gemma4-jax-exp49-scan-layers
+
+**Hypothesis**: Replacing the 42-iter Python for-loop with `jax.lax.scan` should drop step-0 compile from ~180 s to ~5-15 s (per torchax exp 26's analysis), and may gain 2-5 % TPS from shared activation buffers. Torchax exp 26 parked the same idea due to 5 torchax-specific blockers (ScannedModule kwargs assertion, heterogeneous state_dict, etc.) — none of which apply to the native-JAX port that owns `Gemma4TextModel.__call__` directly.
+
+**Structure**: The E4B layer pattern is exactly `[sliding x 5, full x 1] x 7`. Heterogeneous `head_dim` (sliding=256, full=512) forbids a single flat scan over all 42 layers. Used two nested scans: outer over 7 super-blocks, inner over 5 sliding layers per block; 1 full-attention layer per block applied inline. Stacked weight trees: sliding = `[7, 5, ...]`, full = `[7, ...]`.
+
+**KV sharing** (18 shared layers borrow K/V from layers 22 and 23): handled with B1+B2+B5 from the torchax exp 26 sub-problem list —
+1. B1 **zero-stub weights** on shared layers so stacking is homogeneous.
+2. B2 **stored_k/v in scan carry** instead of dict side-effect; `jnp.where(is_kv_shared, borrowed, k_local)` selects.
+3. B5 **traced int scalars** `is_kv_shared[block, inner]`, `is_store_kv[block, inner]` — no Python branches in the body.
+
+**Expected outcome**: 3-15x compile-time drop (primary). 2-5 % TPS gain (secondary, upside bet).
+
+**Actual outcome**:
+- **Compile step 0: 180 s → 69.3 s** (−61.5 %, 2.6× faster). **Primary hypothesis confirmed**.
+- TPS (mean steps 2-19): 34,614 → **27,290** (−21.2 % — **secondary hypothesis refuted**, large regression).
+- Step time mean: 355.0 ms → 450.3 ms (+26.8 %).
+- MFU: 23.05 % → **18.17 %** (−4.88 pt).
+- Loss match: step 4 = 2.1990 vs exp 36's 2.1875 (**+0.5 %**, within bf16 reorder noise over 42 layers); step 19 = 1.8441 vs 1.8359 (**+0.5 %**). Trajectory descends cleanly. **Correctness PASS.**
+
+**Regression root-cause (inference, pending xprof drill-down)**:
+1. **Wasted zero-stub matmuls** on 18 shared layers: `k_proj` and `v_proj` with zero weights are real compute in HLO because XLA can't static-prove zeros inside a scan body with traced weight slices. Estimated ~35 ms/step.
+2. **`jax.checkpoint` forced per-layer remat**: without it, scan materializes a full activation stack (`f32[7, 5, 3, 1024, 2560]` × several = 35 GiB OOM). With it, every layer is re-executed during backward, losing XLA's fine-grained remat flexibility that the exp-36 for-loop enjoyed.
+3. **Splash custom-call inside shard_map inside checkpoint inside scan**: the kernel's `jax.shard_map(check_vma=False)` composes awkwardly with scan's HLO structure. XLA's ability to overlap the per-layer all-gather with compute is likely worse than in the unrolled case where all 42 splash calls can be scheduled with global visibility.
+
+**Analysis**: The compile-time premise held cleanly. The runtime premise (shared activation buffers) was dominated by the overhead of the per-layer remat + wasted matmuls. Scan is a durable iteration-loop accelerator (on cache miss, fresh HLO compiles in 69 s vs 180 s) but not a steady-state TPS lever on this workload.
+
+**Decision**: `keep` (potential). Code lives on main behind `JAX_SCAN_LAYERS=1` env gate. Exp 36 (34,614 TPS, 23.05 % MFU, Python for-loop) remains the JAX-stack best — the trunk default is unchanged.
+
+**Durable artifacts**:
+1. **`jax/model/scan_layers.py`** (551 LOC): pure-JAX functional Gemma 4 decoder-layer body + two-level scan with B1+B2+B5 KV-sharing handling. Reusable for any future "run scan path" follow-up.
+2. **Env-gated dispatch** in `modeling_gemma4.py`: 17 LOC, off by default. Zero cost to the baseline path.
+3. **Empirical data point on scan-under-autodiff** on Gemma 4 at v6e-4: shows that the B7 memory problem (scan stores per-iteration activations) must be solved with nested `jax.checkpoint` to avoid OOM on a 42-layer stack at b=3 s=1024. This is the torchax exp 26 B7 that was never measured — now measured and documented.
+4. **Resolution of torchax exp 26 on the native-JAX stack**: the 7 Option-B sub-problems (B1-B7) can be resolved cleanly when the Python owns `Gemma4TextModel.__call__` directly; the torchax blockers were specific to torchax's scaffolding.
+
+**Follow-ups (ranked, none promoted as urgent)**:
+1. **exp 50 — cond-dispatched shared vs non-shared**: replace zero-stub matmuls with `jax.lax.cond` on `is_kv_shared`. Risk: cond may cost more than the matmul saves. Low-medium confidence. Only worth it if we find a production use case for the scan path.
+2. **exp 51 — relax per-layer remat policy**: try a finer-grained `jax.checkpoint` policy inside the scan body. Effort S.
+3. **Measure scan + xla SDPA** (no splash) to isolate splash's contribution to the regression. Trivial to try.
+4. **Leave env gate off default**. The compile-cache (exp 45) already handles the ~360-s compile cost by caching; scan's floor-drop only matters on cache misses, which happen on fresh HLO. Revisit if a future code change invalidates the cache frequently.
+
