@@ -14,14 +14,15 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 ## Current state
 
-**Exp 35** at **30,386 TPS** (seq=1024, batch=1, fsdp=4, bf16, splash) — flat (+0.33 %) over exp 34's XLA-SDPA baseline. Splash kernel is correct (bit-match loss at step 19: 2.2969) and HLO diff confirms it swaps matmul time from XLA convolution-fusion into Mosaic custom-fusion with a ~49 ms / 3-step net saving — but splash's per-call launch overhead at batch=1 seq=1024 offsets most of it. Peak HBM dropped 16.85 → 16.43 GiB, creating headroom for **exp 36 (batch=3)** where splash's asymptotic win is expected to materialize.
+**Exp 36** at **34,614 TPS** (seq=1024, batch=3, fsdp=4, bf16, splash) — **+13.9 %** over exp 35 and **+3.7 % over the torchax session-best** ([exp 25, 33,372 TPS](../../torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md)). Step time 355.0 ms/step, peak HBM **27.11 GiB / 31.25 GiB = 86.75 %** (fits comfortably with 4.14 GiB of headroom). The JAX stack now leads both stacks, and it got there without bf16 CE or fused_bwd-specific tuning yet. HLO-op diff vs exp 35 (b=1): splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul `convolution fusion` grew ×2.75 and `loop fusion` ×3.81 — exactly the per-call-overhead amortization mechanism predicted in exp 35's writeup. New bottleneck surfaces at b=3: `loop fusion` (28.1 % of step) and `collective-permute-done` (12.2 %, didn't exist at b=1).
 
 ## Queued experiments (highest-expected-gain first)
 
-- **exp 36** — **splash + batch=3** (direct analog of torchax exp 18, +8.0 %). HBM 52.6 % leaves ~2-3 GiB headroom. Confidence high.
-- **exp 37** — splash + bf16 CE (tokamax or hand-roll). ~+1-3 % and frees ~1.5 GiB of fp32 logits.
-- **exp 38** — scan-over-layers. Easier in native JAX (no torchax kwargs/assertion constraints — see [torchax exp 26 parked blockers](../../torchax/experiments/2026-04-23-exp26-scan-over-layers-potential.md)). Compile-time win primarily.
-- **exp 39** — step-1 recompile root-cause (out_shardings / donation).
+- **exp 37** — **splash + b=3 + bf16 CE** (hand-roll first, tokamax variant second). Frees ~1.5 GiB + trims one pass over logits. Expected +1–3 %. Confidence medium.
+- **exp 38** — **collective-permute-done investigation**. 12.2 % of step at b=3 is a huge new bucket; `in_shardings` / `out_shardings` audit might reclaim half. Expected +5–6 %. Confidence medium.
+- **exp 39** — **Pallas RMSNorm kernel** (210 calls/step, single-HBM-pass). Expected +3–8 % on `loop fusion`. Effort M.
+- **exp 40** — scan-over-layers. Easier in native JAX. Compile-time win primarily (step 0: 167 s → ~5 s).
+- **exp 41** — b=4. Gated on exp 37 landing; 4.14 GiB free today, b=4 adds ~3.5 GiB.
 
 ## See also
 

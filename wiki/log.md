@@ -1,5 +1,13 @@
 # Log
 
+## [2026-04-23] run-experiment | jax-exp36: splash + batch=3 — new JAX-stack best, BEATS torchax session-best (+3.7 %)
+
+**Op**: run-experiment.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp36-jax-splash-batch3-accepted.md`.
+**Pages updated**: `.../jax/experiments/RESULTS.tsv` (exp36 keep row), `.../jax/experiments/OBSERVATIONS.md` (exp 36 block), `.../jax/experiments/README.md` (Current state + queued exp list).
+**Key result**: **SUPPORTED / accepted**. TPS 30,386 → **34,614 (+13.9 %)**; step time 134.8 → 355.0 ms (sub-linear at 3× batch — per-token cost −13.9 %); peak HBM 16.43 → **27.11 GiB / 86.75 %** (4.14 GiB free). The JAX stack at b=3 splash **surpasses torchax session-best** (exp 25: 33,372 TPS) by **+3.7 %** without bf16 CE. HLO-op diff validates the per-call-amortization mechanism: splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul/loop fusions grew 2.75–3.81×.
+**Notes**: No code change — only `--batch_size 1` → `--batch_size 3` and `JAX_ATTENTION_IMPL=splash` env var unchanged from exp 35. Loss descends cleanly 3.81 → 1.84 (b=3 batch content differs from b=1, not bit-comparable; trajectory healthy). New bottleneck surfaces at b=3: `loop fusion` 28.1 % (RMSNorm Pallas kernel now worth building), `collective-permute-done` 12.2 % (SPMD re-shard audit). Next: exp 37 (bf16 CE), exp 38 (sharding audit), exp 39 (RMSNorm kernel). Profile uploaded to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-jax-exp36-splash-batch3/`; xprof browser at http://localhost:8791/?run=2026-04-23-gemma4-jax-exp36-splash-batch3.
+
 ## [2026-04-23] ingest-batch + lint | Wave 4 follow-up — 15 concept stubs, 5 deferred codebases, 11 scaling-book chapters, lint pass
 
 **Op**: ingest-source (11 scaling-book chapters) + ingest-codebase (5 deferred repos) + manual (15 concept stubs) + lint.

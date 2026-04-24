@@ -70,3 +70,59 @@ See [2026-04-23-exp35-jax-splash-potential.md](2026-04-23-exp35-jax-splash-poten
 - **exp 37 — splash + bf16 CE** (tokamax or hand-roll). Torchax exp-12 lesson: the `[B, S, V=262144]` fp32 logits tensor is ~1.5 GiB at b=2; dropping to bf16 / fused CE frees HBM and trims ~1-3 %.
 - **exp 38 — splash + scan-over-layers**. JAX port owns the layer loop directly (no `ScannedModule` blocker), so this is more tractable than on torchax. Main win: step-0 compile drop ~130 s → ~4 s. Throughput neutral.
 - Kernel-launch overhead finding: ~17 ms / 3-step added in custom-fusion for 42 × 3 = 126 splash calls is ~0.13 ms / call. This is a floor — scan-over-layers might amortize it by keeping the kernel code hot.
+
+## exp 36 — splash + batch=3 in JAX (ACCEPTED, +13.9 %, new JAX-stack best, BEATS torchax session-best)
+
+See [2026-04-23-exp36-jax-splash-batch3-accepted.md](2026-04-23-exp36-jax-splash-batch3-accepted.md) for the full page.
+
+**Config**:
+- Command diff from exp 35: `--batch_size 1` → `--batch_size 3`. No code change. `JAX_ATTENTION_IMPL=splash` unchanged.
+- Profile path: [`raw/profiles/2026-04-23-gemma4-jax-exp36-splash-batch3/`](../../../../../raw/profiles/2026-04-23-gemma4-jax-exp36-splash-batch3/) (321 MB, gitignored).
+- **Profile browser URL**: http://localhost:8791/?run=2026-04-23-gemma4-jax-exp36-splash-batch3
+- GCS mirror: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-23-gemma4-jax-exp36-splash-batch3/`
+
+**Hypothesis**: splash's per-call Pallas launch overhead is batch-independent (~0.13 ms × 42 layers × 3 calls/step ≈ 16 ms, mostly fixed), so bumping batch 1 → 3 amortizes it over 3× more tokens. Predicted +5–10 %, based on the torchax exp 15 → exp 18 arc (+7.0 % then +0.9 % additive on fused_bwd) where splash's marginal TPS value rose as batch grew.
+
+**Changes made**:
+- None to code. Only `--batch_size 1` → `--batch_size 3` on the command line.
+- Data loader automatically switches to per-chip-batch=3 (global batch 12 = 3 × fsdp=4; still divisible, no sharding surprise).
+
+**Expected outcome**: +5–10 % TPS; step time 135 → ~375 ms (scales with batch but sub-linearly); peak HBM 52.6 % → ~60 % (stack constant 16.4 GiB + ~3 × 1.5 GiB activation delta).
+
+**Actual outcome**:
+- TPS (median 6–15): 30,386 → **34,614** (Δ **+13.9 %** — upper end of expected range)
+- Step time (median 6–15): 134.8 → **355.0 ms** (2.63× for 3× tokens — confirms sub-linear scaling, per-token cost −13.9 %)
+- Step time (xprof avg steps 10–12): 142.2 → **375.5 ms** (profile inflates slightly)
+- Peak HBM: 16.43 → **27.11 GiB** (52.6 % → **86.75 %**) — +10.68 GiB, all in heap (activations); stack constant at 16.44 GiB
+- Free HBM at peak: **4.14 GiB** — room for one more batch raise (b=4) or one memory optimization
+- Compile step 0: 132 → 167 s (+35 s; expected, bigger shape graph)
+- Loss step 19: healthy 1.84 (descends 3.81 → 1.84; different seed/batch vs exp 35's 2.30, not bit-comparable)
+
+**Profile signals**:
+- Bottleneck: compute-bound (same as exp 35), now dominated by `convolution fusion` (33.6 % of step time) + `loop fusion` (28.1 %).
+- **Top HLO-op diff vs exp 35 (3-step profile window)**:
+  - `convolution fusion`: 549 → 1512 ms (**×2.75** for 3× tokens — MXU utilization improves at bigger shapes).
+  - `loop fusion` (RMSNorm + residual-add): 332 → 1265 ms (**×3.81** — super-linear — next-tier bottleneck surface).
+  - `custom fusion` (splash kernel): 169 → 175 ms (**×1.03** — **near-constant**, validating the per-call overhead hypothesis exactly).
+  - `collective-permute-done`: ~11 → **550 ms** (12.2 % of step time) — **new pattern at b=3**, SPMD re-sharding cost.
+- HBM: 27.11 GiB peak, no fragmentation (0.0 %), heap 10.67 GiB / stack 16.44 GiB / free 4.14 GiB.
+- MXU utilization vs roofline not reported by xprof at this config (still 0 % — same as exp 35; TPU-profile plugin limitation on Pallas-heavy graphs).
+
+**Analysis**: The mechanism predicted in exp 35 was right on both counts:
+1. **Splash per-call overhead amortization** (primary): custom-fusion scaled 1.03× while everything else scaled 2.75–3.8×. At b=1, splash was 9.9 % of step; at b=3 it's 3.9 %. This alone buys ~6 %.
+2. **MXU utilization improvement** (bonus, not anticipated): convolution-fusion growing 2.75× for 3× tokens means per-matmul MXU rows fill better at `[B=3, ...]` shapes. +7 % of the delta lives here.
+
+Both effects compound in parallel and sum to the observed +13.9 %. **The native-JAX stack now outperforms the torchax session-best** (33,372 TPS exp 25) by **+3.7 %** — without bf16 CE, without SEQ_MINOR-specific tuning beyond what splash already defaults to, and without custom fused_bwd beyond splash's `use_fused_bwd_kernel=True`. The remaining torchax-side headroom (bf16 CE in exp 37, `collective-permute-done` tightening in exp 38) is additive — we're likely to pass the torchax best by >5 % once those land.
+
+New bottleneck surfaces visible at b=3 that weren't actionable at b=1:
+- `loop fusion` at 28.1 % of step time — RMSNorm + residual-add. Pallas RMSNorm kernel (from program.md's build-targets table) now worth the effort.
+- `collective-permute-done` at 12.2 % — SPMD re-shuffle. `in_shardings`/`out_shardings` audit on the jitted step.
+
+**Decision**: `keep` (ACCEPTED). New JAX-stack best. No code merge needed (it's a flag change); documenting via experiment page + RESULTS.tsv keep-row + this entry. README.md updated with new "Current state" numbers.
+
+**Follow-ups**:
+- **exp 37 — splash + b=3 + bf16 cross-entropy**. Highest priority. Frees ~1.5 GiB (HBM 86.8 % → ~82 %), trims one pass over `[B=3, S=1024, V=262144]` logits. Expected +1–3 % TPS.
+- **exp 38 — collective-permute-done investigation**. 12.2 % of step time is a huge new bucket that didn't exist at b=1. Tighter in/out shardings on the jit body might reclaim half of it (5–6 %).
+- **exp 39 — Pallas RMSNorm kernel**. `loop fusion` is now 28 % of step time; RMSNorm is 5 × 42 = 210 calls/step; single-HBM-pass kernel worth 3–8 %.
+- **exp 40 — scan-over-layers**. Compile-time win (step 0 167 s → ~5 s), not throughput. Still worth doing — iteration speed improvement.
+- **exp 41 — b=4**. With 4.14 GiB HBM free, b=4 adds ~3.5 GiB; may just fit. If exp 37 lands first, b=4 becomes very likely to fit. Defer until after 37.
