@@ -14,7 +14,15 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 ## Current state
 
-**Exp 36** remains the JAX-stack best at **34,614 TPS** (seq=1024, batch=3, fsdp=4, bf16, splash) — **+13.9 %** over exp 35 and **+3.7 % over the torchax session-best** ([exp 25, 33,372 TPS](../../torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md)). Step time 355.0 ms/step, peak HBM **27.11 GiB / 31.25 GiB = 86.75 %** (fits comfortably with 4.14 GiB of headroom). HLO-op diff vs exp 35 (b=1): splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul `convolution fusion` grew ×2.75 and `loop fusion` ×3.81 — per-call-overhead amortization mechanism per exp 35's predictions. New bottleneck surfaces at b=3: `loop fusion` (28.1 % of step) and `collective-permute-done` (12.2 %, didn't exist at b=1).
+### New regime (2026-04-24, exp 52+): fp32 master + bf16 compute AMP
+
+The user requested a **regime change** on 2026-04-24: master weights in fp32 (for the optimizer), matmul/conv compute in bf16 (standard large-model mixed precision), and `seq_len=8192` as the new default. The flags `--weights-dtype {bf16,fp32}` and `--compute-dtype {bf16,fp32}` are now wired into both trainers (JAX full-impl; torchax stub/warn). The legacy `--dtype` flag still sets both dtypes and reproduces the pre-exp-52 behavior.
+
+**Exp 52** (the new-regime baseline) establishes that **`seq_len=8192 b=1 fp32-master` is infeasible on v6e-4** — compile OOM at 35.18 GiB vs 31.25 GiB per-chip HBM, exceeded by 3.93 GiB. Even legacy bf16-only at seq=8192 b=1 OOMs (36.16 GiB). The `seq=2048 b=1 fp32-master / bf16-compute` configuration is the largest feasible representative of the new regime and is filed as the new baseline at **26,807 TPS**, step time 305.6 ms, loss descent 3.25 → 2.30. Non-monotonic XLA scheduling was observed (seq=4096 and seq=6144 report WORSE peak HBM than seq=8192). See [2026-04-24-exp52-jax-fp32master-seq2k-accepted.md](2026-04-24-exp52-jax-fp32master-seq2k-accepted.md) for the full OOM probe table and AMP implementation details.
+
+### Old regime (2026-04-23, exp 34–51): bf16 everywhere
+
+**Exp 36** remains the **old-regime** (legacy `--dtype bf16`) JAX-stack best at **34,614 TPS** (seq=1024, batch=3, fsdp=4, bf16, splash) — **+13.9 %** over exp 35 and **+3.7 % over the torchax session-best** ([exp 25, 33,372 TPS](../../torchax/experiments/2026-04-23-exp25-splash-block1024-accepted.md)). Step time 355.0 ms/step, peak HBM **27.11 GiB / 31.25 GiB = 86.75 %** (fits comfortably with 4.14 GiB of headroom). HLO-op diff vs exp 35 (b=1): splash `custom fusion` near-constant (169 → 175 ms, ×1.03) while matmul `convolution fusion` grew ×2.75 and `loop fusion` ×3.81 — per-call-overhead amortization mechanism per exp 35's predictions. New bottleneck surfaces at b=3: `loop fusion` (28.1 % of step) and `collective-permute-done` (12.2 %, didn't exist at b=1).
 
 **Exp 37** (bf16 CE env-var gate on top of exp 36) landed flat at **34,629 TPS (+0.04 %, within noise)** — the native-JAX port was already running bf16 CE by construction since exp 34, so the torchax-exp-12-style win was a no-op-by-construction. Durable artifact: the `JAX_CE_DTYPE={bf16,fp32}` gate in `train.py`, useful for regression guards on future LM-head refactors. Peak HBM 27.45 GiB / 87.84 % (unchanged heap, +0.34 GiB stack — free headroom 3.80 GiB).
 

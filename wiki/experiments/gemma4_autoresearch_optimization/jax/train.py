@@ -432,6 +432,29 @@ def main(argv: Optional[list] = None) -> int:
         return loss.astype(jnp.float32)
 
     from jax import checkpoint_policies as _ckpt_policies
+    # Exp 52+: remat policy is env-selectable so the seq=8192 regime can
+    # climb its HBM wall without a code patch per variant. Default
+    # `dots_with_no_batch_dims` matches exp 36; `nothing_saveable` is
+    # maximum-remat (recomputes everything on backward — highest TPS
+    # penalty, lowest peak HBM). `everything_saveable` is minimum-remat
+    # (fastest step, largest HBM).
+    _remat_policy_name = os.environ.get("JAX_REMAT_POLICY", "dots_with_no_batch_dims").lower()
+    _policy_map = {
+        "dots_with_no_batch_dims": _ckpt_policies.checkpoint_dots_with_no_batch_dims,
+        "nothing_saveable": _ckpt_policies.nothing_saveable,
+        "everything_saveable": _ckpt_policies.everything_saveable,
+        "dots": _ckpt_policies.checkpoint_dots,
+        # Host-offload dot-with-no-batch-dims: stashes saved dot outputs to
+        # host RAM during forward and streams back during backward. Trades
+        # ICI/PCIe bandwidth for HBM headroom. Useful at the fp32-master
+        # seq=8192 ceiling where the model is ~3 GiB over per-chip HBM.
+        "offload_dot_with_no_batch_dims": _ckpt_policies.offload_dot_with_no_batch_dims(
+            "device", "pinned_host",
+        ),
+    }
+    _remat_policy = _policy_map.get(_remat_policy_name, _ckpt_policies.checkpoint_dots_with_no_batch_dims)
+    print(f"[remat] JAX_REMAT_POLICY={_remat_policy_name}")
+
     # Under JAX_SCAN_LAYERS=1 the scan bodies carry their own per-iter
     # `jax.checkpoint(..., policy=checkpoint_dots_with_no_batch_dims)`;
     # wrapping forward_loss in an *outer* checkpoint as well forces
@@ -442,10 +465,7 @@ def main(argv: Optional[list] = None) -> int:
     if os.environ.get("JAX_SCAN_LAYERS") == "1":
         grad_fn = jax.value_and_grad(forward_loss)
     else:
-        checkpointed = jax.checkpoint(
-            forward_loss,
-            policy=_ckpt_policies.checkpoint_dots_with_no_batch_dims,
-        )
+        checkpointed = jax.checkpoint(forward_loss, policy=_remat_policy)
         grad_fn = jax.value_and_grad(checkpointed)
 
     def train_step(state, opt_state, input_ids, labels):

@@ -358,3 +358,61 @@ See [2026-04-24-exp50-jax-scan-tuned-potential.md](2026-04-24-exp50-jax-scan-tun
 2. **HLO drill-down** of exp 50 vs exp 36 step traces. Identify which HLO ops grew by >10 % under scan. Effort S. Confidence medium for finding one more lever.
 3. **exp 52 — flatten inner + outer scans** within each group using `vmap + jit` or by reshaping `[n_blocks, 5, ...]` to `[n_blocks*5, ...]`. Non-obvious given sliding/full heterogeneity; the full layer still needs inline treatment. Effort M, confidence low.
 4. **Leave env gate off default**. Exp 45 compile cache covers the 180-s compile on cache hits; scan's 72.7-s floor only matters on cache misses (code edits). The −11-16 % TPS cost makes scan a dev-loop tool, not a production default.
+
+## exp 52 — new-regime baseline: fp32-master + bf16-compute AMP, seq=8192 infeasible → seq=2048 b=1 accepted (ACCEPTED)
+
+**Config**:
+- Command diff from prior keep (exp 36): `--dtype bf16` → `--weights-dtype fp32 --compute-dtype bf16`; seq_len 1024 → 2048; batch_size 3 → 1 (forced by the fp32-master memory ceiling); splash+fsdp=4 unchanged.
+- Run command: `JAX_COMPILATION_CACHE_DIR=/tmp/jax_compile_cache JAX_ATTENTION_IMPL=splash python -u -m train --steps 20 --batch_size 1 --seq_len 2048 --weights-dtype fp32 --compute-dtype bf16 --profile_dir $PROFILE_DIR --profile_steps 10 11 12`
+- Profile path: `raw/profiles/2026-04-24-gemma4-jax-exp52-baseline-seq2k-fp32master/` (on-disk, gitignored)
+- **Profile GCS mirror**: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-24-gemma4-jax-exp52-baseline-seq2k-fp32master/`
+- **Profile browser URL**: `http://localhost:8791/?run=2026-04-24-gemma4-jax-exp52-baseline-seq2k-fp32master` (will resolve once xprof server is re-pointed at the autoresearch logdir — currently pointing at a different bucket).
+- Experiment page: [2026-04-24-exp52-jax-fp32master-seq2k-accepted.md](2026-04-24-exp52-jax-fp32master-seq2k-accepted.md)
+
+**Hypothesis**: User asked for a new regime — fp32 master weights (for the optimizer), bf16 compute (for matmul/conv), seq_len=8192. Establish a fresh baseline at this config and re-run the optimization loop against the new baseline. Expect: fp32 master adds ~8 GiB of opt-state HBM (3× params fp32 vs bf16), trimming headroom; seq=8192 triples the activation stack vs seq=2048. Hypothesis-secondary: seq=8192 may not fit; probe the wall before committing to it.
+
+**Changes made** (code + flag wiring, merged in commit 517a689 + 176fd2c on main):
+- `jax/train.py`: added `--weights-dtype` and `--compute-dtype` CLI args + `--dtype` legacy shortcut; seq_len default 2048 → 8192; `JAX_REMAT_POLICY` env-var (exposes `dots_with_no_batch_dims`, `nothing_saveable`, `everything_saveable`, `dots`, `offload_dot_with_no_batch_dims`).
+- `jax/model/modeling_gemma4.py`: every NNX module (`Gemma4RMSNorm`, `Gemma4TextScaledWordEmbedding`, `Linear`, `Gemma4TextMLP`, `Gemma4TextAttention`, `Gemma4TextDecoderLayer`, `Gemma4TextModel`, `Gemma4ForCausalLM`) accepts split `weights_dtype` / `compute_dtype` kwargs. `Linear` forward downcasts weight to compute_dtype at the dot. `embed_tokens` gather casts to compute_dtype. `layer_scalar` casts to hidden-states dtype to avoid fp32-upcast of the residual.
+- `jax/model/weight_loader.py`: new `shardings={path: NamedSharding}` kwarg scatter-shards each tensor at device_put time via a host-numpy scratch buffer → per-device HBM directly. This avoids a 10.5 GiB fp32 PLE embedding materializing on device 0 at load time (compile-time OOM at init otherwise). `target_dtype = weights_dtype if weights_dtype is not None else dtype`.
+- `jax/train.py` reorder: `apply_sharding` now runs BEFORE `load_hf_weights` so the shardings lookup is available at load time.
+- `jax/train.py` init-in-bf16 workaround: `_init_weights_dtype = compute_dtype` even when `weights_dtype=fp32`, so the random-init pass stays in bf16 (fits on device 0); the loader replaces with fp32 sharded at load time; a `_fixup_dtype_meta` pass retargets the per-module `weights_dtype` attribute for introspection.
+- `jax/model/scan_layers.py`: all `x @ w.T` inside scan bodies routed through `_matmul_amp(x, w)` (downcasts `w` to `x.dtype` when they differ); `layer_scalar` cast-to-hidden-dtype. Without this the scan carry types mismatched (`bf16[4,8192,2560]` in, `f32[4,8192,2560]` out) and `jax.lax.scan` rejected the loop.
+- `torchax/train.py`: flags present for CLI parity, warns + falls back to `--dtype` if a split is requested (full AMP implementation is JAX-only; HF PyTorch takes a single `torch_dtype`).
+
+**Expected outcome**:
+- seq=8192 b=1 fp32-master probably OOMs on v6e-4 by 3–6 GiB (roughly: fp32 opt-state +8 GiB over bf16; activation stack +2× vs seq=1024). bf16-legacy seq=8192 might fit; unclear.
+- Fallback: seq=2048 b=1 fp32-master should fit (exp 40 bf16 b=2 at 27 GiB peak leaves ~4 GiB room, fp32 master eats most of that). Expected TPS: ~27-28K (between exp-36's 34,614 at lower-seq higher-batch and exp-40's 31,809 at the exp-40 shape).
+
+**Actual outcome**:
+- seq=8192 b=1 fp32-master: compile OOM, **35.18 GiB vs 31.25 GiB, exceeded by 3.93 GiB**.
+- seq=8192 b=1 bf16-LEGACY (no AMP): also compile OOM, 36.16 GiB, exceeded by 4.91 GiB. **The seq=8192 wall is not caused by fp32 master — it's the model + activation stack on 4 chips.**
+- seq=8192 b=1 bf16-legacy + JAX_SCAN_LAYERS=1: 32.46 GiB, exceeded by only 1.22 GiB. Scan narrows the gap but not enough.
+- seq=8192 b=1 fp32-master + JAX_REMAT_POLICY=nothing_saveable (full remat): **39.66 GiB** (worse, +4.48 GiB over default). XLA serializes more live tensors to avoid recomputing.
+- seq=8192 b=1 fp32-master + offload_dot_with_no_batch_dims (host RAM): **38.17 GiB** (also worse). XLA planner does not credit offload as HBM-freed at compile time. Matches torchax exp 11 lesson verbatim.
+- seq=6144 b=1 fp32-master: **49.66 GiB** required — dramatically worse than seq=8192. Non-monotonic XLA scheduling: no intermediate seq_len between 2048 (fits) and 8192 (3.93 GiB over) provides a stepping stone; in fact seq=4096 (39.58 GiB) and seq=6144 (49.66 GiB) are WORSE.
+- seq=2048 b=2 fp32-master: 39.37 GiB OOM (b=2 infeasible under AMP).
+- **seq=2048 b=1 fp32-master: FITS.** Steady-state step time 305.6 ms (steps 6–15 median), **26,807 TPS**. Compile step 0 only 16.48 s (cache hit, exp 45 wins continue). Loss descent 3.25 → 2.30 clean, no NaN.
+
+- TPS vs exp 40 (closest old-regime long-seq reference, bf16-only seq=2048 b=2 at 31,809 TPS): **−15.7 %**. Delta dominated by batch halving (b=2→b=1 under fp32-master), not by AMP per se. Pure AMP isolation needs a b=1 s=1024 sibling experiment (see Follow-ups).
+- TPS vs exp 36 (old-regime best, 34,614 TPS at s=1024 b=3): **−22.5 %** (but very different shape).
+- MFU: not computed this session (would need the same matmul-FLOP accounting done for exp 36).
+
+**Profile signals**:
+- Did not run xprof MCP queries — the local xprof_mcp server was pointed at a different GCS logdir (`gs://tpu-pytorch-alekseyv-us-central2/jax-experiment`) than the autoresearch bucket where exp 52's profile was uploaded. GCS profile is uploaded and the direct URL `http://localhost:8791/?run=2026-04-24-gemma4-jax-exp52-baseline-seq2k-fp32master` will work once the xprof server is re-pointed. On-disk trace is complete and queryable via any xprof pointed at this folder.
+- Sanity: loss trajectory 3.25 → 2.30 matches exp 40's early-step descent within noise. No NaN. No divergence from a typical bf16-splash run.
+
+**Analysis**:
+- **Mechanism matches expectation for "seq=8192 at risk"**. Post-hoc: opt-state at fp32 is `2 × params_fp32 ≈ 16 GiB` global → 4 GiB/chip with fsdp=4; params fp32 are another 2 GiB/chip; activations at b=1 s=8192 are ~7 GiB/chip (~42 layers × 160 MiB MLP intermediate, partially saved under remat). Plus PLE embed, lm_head lookup, collective buffers. 4+2+7 ≈ 13 GiB + overheads puts us very close to 31.25 GiB. AMP overhead alone (~1 GiB fp32 opt state delta vs bf16) is NOT the dominant blocker — the whole budget is tight at seq=8192 on 4 chips.
+- **The AMP implementation is correct**. All casts happen at the right boundaries (weights cast-to-bf16 at matmul, embed cast-to-bf16 at lookup, layer_scalar cast-to-residual-dtype). Loss descends normally. fp32 master weights flow into optax.adamw naturally (it handles any param dtype). Grad dtype follows param dtype (fp32), so updates are applied in fp32 as intended.
+- **seq=2048 b=1 is the representative workload for the new regime on v6e-4**. Until we have v6e-8 or a memory-shrinking code change, this is the new-regime baseline for all future optimization experiments.
+- **Non-monotonic XLA scheduling (seq=4096 > seq=8192 in HBM)** is a genuine surprise and informs future experiment design: when the intermediate seq_lens look plausible, measure before assuming they sit on a monotonic curve between known-good and known-bad shapes. File as a heuristic.
+
+**Decision**: **keep** — new-regime baseline reference. Committed on main.
+
+**Follow-ups** (ranked by expected-gain × confidence / effort):
+1. **exp 53 — pure AMP isolation at shared shape** (fp32-master b=1 s=1024 vs bf16 b=1 s=1024). Directly measures "how much TPS does fp32 master cost at a fixed shape". Expected: ≲5 %. Effort S.
+2. **exp 54 — splash block sweep at seq=2048 under fp32 master** (SPLASH_BLOCK_Q=2048 full-tile; default 1024 gives 2 tiles/head). Expected: ±1 %. Effort S.
+3. **exp 55 — scan_layers at seq=2048 b=1 fp32-master**. Compile-time win durable; TPS may differ from the exp 50 outcome at a different shape. Effort S (just env-var flip).
+4. **exp 56 — 2D mesh (dp=2, tp=2) at seq=8192**. K/V replicated on tp=2 (num_kv_heads=2 divides 2) — unblocks mixed-sharding. Might fit seq=8192. Effort M. Memory-win-first per program heuristic.
+5. **exp 57 — offload PLE embedding lookup to host**. `embed_tokens_per_layer` is 11 GiB fp32 / 5.5 GiB bf16 — biggest single tensor. Streaming it from host at the first-layer boundary could free enough HBM for seq=4096 or seq=8192. Risky code change. Effort L.
