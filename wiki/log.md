@@ -1,5 +1,13 @@
 # Log
 
+## [2026-04-24] run-experiment | jax-exp43: tokamax.linear_softmax_cross_entropy_loss — INVALID (API-precondition failure, no softcap support)
+
+**Op**: run-experiment.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp43-jax-tokamax-ce-rejected.md`.
+**Pages updated**: `.../jax/experiments/RESULTS.tsv` (exp43 discard row), `.../jax/experiments/OBSERVATIONS.md` (exp 43 block), `.../jax/experiments/README.md` (Current state paragraph adds exp 43 line; exp 36 remains best).
+**Key result**: **INVALID** — no run performed. tokamax `v0.0.12` public API `tokamax.linear_softmax_cross_entropy_loss(x, labels, weights, *, reduction, precision, implementation)` has **no** `logits_soft_cap` (or equivalent) kwarg (verified across `api.py`, `base.py`, `reference.py`, and the 690-line `pallas_mosaic_tpu_kernel.py`). Gemma 4's `final_logit_softcapping=30.0` is a non-linear `sc * tanh(logits / sc)` element-wise on the `[B, S, V]` logits — cannot be folded into `hidden` or `W` (algebraically impossible for non-linear post-matmul ops), and applying post-kernel requires materializing `[B, S, V]` which defeats the kernel's sole purpose. Skipping softcap violates program.md "What you CANNOT do". Zero lines of code merged. Exp 36 remains JAX-stack best at 34,614 TPS / 86.75 % HBM.
+**Notes**: Decision-tree exit per task brief: "Softcap incompatible with tokamax API → can't apply cleanly → `-invalid`. Don't merge." The result **empirically confirms** the build-target already catalogued in [program.md § "Pallas kernels to BUILD" → "Fused final logit softcap + log-softmax + NLL"](experiments/gemma4_autoresearch_optimization/program.md) — a Gemma-aware kernel fork that applies `sc * tanh(logits_tile / sc)` inline on each VMEM block before `log_softmax` is the only correct path to the ~1.5 GiB HBM save on this model. Estimated effort M (extend mosaic_tpu_kernel.py with a softcap pre-op). Secondary API mismatches also noted: no `ignore_index`; `reduction="mean"` divides by `B*S` instead of `mask.sum()`; `x` wants `[B, H]` flat (easy reshape). These are ~15-line glue, non-blocking — softcap is the hard blocker. Note: torchax exp 27's prior tokamax integration attempt failed on **attention** (`dot_product_attention` / sliding-window masks) — exp 43 is the first tokamax-CE attempt on either stack, and fails at a different API seam.
+
 ## [2026-04-23] run-experiment | jax-exp37: bf16 CE env-var gate on top of exp 36 — POTENTIAL (flat, no-op-by-construction)
 
 **Op**: run-experiment.

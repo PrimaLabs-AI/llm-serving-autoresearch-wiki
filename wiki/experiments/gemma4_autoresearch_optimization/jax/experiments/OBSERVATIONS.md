@@ -168,3 +168,54 @@ See [2026-04-23-exp37-jax-splash-b3-bf16ce-potential.md](2026-04-23-exp37-jax-sp
 - **exp 39 — Pallas RMSNorm kernel**. `loop fusion` 27.6 % of step time (1250 ms). 210 norm calls/step. Confidence medium. Effort M.
 - **exp 40 — scan-over-layers**. Compile-time win. Latency-to-first-signal.
 - **exp 41 — b=4**. 3.80 GiB HBM free at exp 37. b=4 adds ~3.5 GiB activation — risky; defer until exp 38 frees some collective buffer space.
+
+## exp 43 — tokamax.linear_softmax_cross_entropy_loss on JAX stack (INVALID, API-precondition failure — no run)
+
+See [2026-04-23-exp43-jax-tokamax-ce-rejected.md](2026-04-23-exp43-jax-tokamax-ce-rejected.md) for the full page.
+
+**Config**:
+- Command diff from exp 36: proposed `JAX_CE_IMPL={default,tokamax}` env-var gate + call into `tokamax.linear_softmax_cross_entropy_loss(hidden, labels, lm_head.T)` in `forward_loss`. **Not implemented** — API inspection killed it before any code landed.
+- Profile path: **none captured** (no run).
+- **Profile browser URL**: n/a.
+- Experiment page: `2026-04-23-exp43-jax-tokamax-ce-rejected.md`.
+
+**Hypothesis (as filed)**: Replace the JAX stack's `logits = hidden @ W.T → softcap → bf16 log_softmax → NLL` sequence with a fused tokamax Mosaic-TPU kernel that never materializes the `[B=3, S=1024, V=262144]` bf16 logits tile (~1.5 GiB). Expected: ~1.5 GiB HBM freed (peak 86.8 % → ~82 %), small TPS gain (≤+3 %) from one fewer HBM round-trip.
+
+**Pre-run discovery**: inspected `raw/code/tokamax/tokamax/_src/ops/linear_softmax_cross_entropy_loss/api.py` (+ `base.py`, `reference.py`, `pallas_mosaic_tpu_kernel.py`). The public API is:
+
+```python
+def linear_softmax_cross_entropy_loss(
+    x: Real[Array, "B H"], labels: Integer[Array, "B"], weights: Real[Array, "H V"], *,
+    reduction: Literal["sum", "mean"] = "sum",
+    precision: ... = None, implementation: ... = None,
+) -> Real[Scalar, ""]
+```
+
+No `logits_soft_cap` (or equivalent) kwarg anywhere in the op — `grep -rin "soft.*cap\|softcap" .../linear_softmax_cross_entropy_loss/` returns zero matches. The softcap references in tokamax live only in **attention** kernels.
+
+**Why the softcap cannot be worked around**: Gemma 4's softcap is `sc * tanh(hidden @ W.T / sc)` applied element-wise to the full `[B, S, V]` logits (modeling_gemma4.py:782–786). It is non-linear in `hidden @ W.T`. Three fold-in options fail:
+1. Fold into `W`: `sc * tanh(x W^T / sc)` is non-linear in `x W^T` — no `W'` exists with `x W'^T ≡ softcap(x W^T)`. Algebraically impossible.
+2. Fold into `hidden`: same obstruction, non-linearity is post-matmul.
+3. Apply externally: requires materializing `[B, S, V]` — defeats the kernel's sole purpose (zero-materialization streaming) and is strictly worse than exp 36 (extra pass).
+
+The only correct path is a **kernel fork** with a softcap pre-op applied inline on each VMEM logits tile before `log_softmax` — exactly the "**Fused final logit softcap + log-softmax + NLL**" build-target already catalogued in [program.md § "Pallas kernels to BUILD"](../../program.md). Exp 43 empirically confirms that entry.
+
+**Program-contract violation avoided**: skipping softcap is listed under "What you CANNOT do" in program.md. An "experiment" that drops it would change the model's output distribution — an `-invalid` on two independent axes (architecture contract + semantic divergence).
+
+**Changes made**: **none**. Zero lines of code modified. No branch created.
+
+**Actual outcome**:
+- No run executed, no profile captured, no HBM / TPS / step-time measurement. Per SCHEMA § experiment template: "If the run was not executed, omit the Profile section and note the reason in `## Verdict`." Done.
+
+**Secondary API mismatches** (for a future revisit if softcap ever lands):
+- No `ignore_index` — `IGNORE_INDEX=-100` tokens handled externally via `mask = (labels != IGNORE_INDEX)` in `train.py:235`. Tokamax wants integer labels, internally one-hots. For `-100`, `jax.nn.one_hot` produces all-zeros (under-range), so the contribution *cancels* numerically but tokamax's `reduction="mean"` divides by `B=B*S`, not `mask.sum()`. Needs a post-kernel rescale by `B / mask.sum()`. Fixable at the call site, ~15 lines.
+- `x` shape `[B, H]` (flat) — need `hidden.reshape(-1, H)`. Trivial.
+- Softcap is the only hard blocker.
+
+**Decision**: `discard` (INVALID / rejected). Commit stays at `c1927ba`. Exp 36 remains JAX-stack best at 34,614 TPS, peak HBM 27.11 GiB (86.75 %).
+
+**Durable artifacts**:
+1. Empirical confirmation that program.md's "Pallas kernels to BUILD" entry is correct — a Gemma-aware CE kernel is the only path to this win on this model. Estimated ~1.5 GiB HBM + 2–5 % TPS if built (fork the 690-line mosaic_tpu kernel, add a softcap pre-op on the logits-tile accumulator before `log_softmax`). Effort M.
+2. Updated view of the program.md "Pallas kernels to TRY" table (line 107): tokamax LCE is listed as a drop-in candidate, but it's **not** a drop-in for any softcap model (Gemma 2/3/4). Logged as an edit-suggestion for the table (not in this experiment's scope to change).
+
+**Follow-ups (unchanged ranking)**: `collective-permute-done` audit (exp 38-style) → Pallas RMSNorm → scan-over-layers → any future Gemma-CE kernel build that enables this exp's hypothesis.

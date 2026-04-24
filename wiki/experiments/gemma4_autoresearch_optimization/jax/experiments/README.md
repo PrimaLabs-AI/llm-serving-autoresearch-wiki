@@ -18,6 +18,8 @@ The torchax stack was built first (it reuses HuggingFace's PyTorch model via tor
 
 **Exp 37** (bf16 CE env-var gate on top of exp 36) landed flat at **34,629 TPS (+0.04 %, within noise)** — the native-JAX port was already running bf16 CE by construction since exp 34, so the torchax-exp-12-style win was a no-op-by-construction. Durable artifact: the `JAX_CE_DTYPE={bf16,fp32}` gate in `train.py`, useful for regression guards on future LM-head refactors. Peak HBM 27.45 GiB / 87.84 % (unchanged heap, +0.34 GiB stack — free headroom 3.80 GiB).
 
+**Exp 43** (tokamax.linear_softmax_cross_entropy_loss — fused `linear + log_softmax + NLL`) is **INVALID** on architecture-precondition grounds. The public tokamax LCE API has no `logits_soft_cap` kwarg, and Gemma 4's `final_logit_softcapping=30.0` is a non-linear `sc * tanh(logits / sc)` element-wise on the `[B, S, V]` logits — cannot be folded into `hidden` or `W` (algebraically impossible for a non-linear post-matmul op), and applying it post-kernel requires materializing `[B, S, V]` which defeats the kernel's sole purpose. Zero lines of code merged. The result empirically confirms the build-target already catalogued in [program.md § "Pallas kernels to BUILD"](../../program.md) — a Gemma-aware CE kernel (inline softcap on the VMEM logits tile before streaming softmax) is the correct path. See [2026-04-23-exp43-jax-tokamax-ce-rejected.md](2026-04-23-exp43-jax-tokamax-ce-rejected.md).
+
 ## Queued experiments (highest-expected-gain first)
 
 - **exp 38** — **collective-permute-done investigation**. 12.1 % of step time at b=3 (549 ms/3-step); `in_shardings` / `out_shardings` audit on the jitted step might reclaim half. Expected +5–6 %. Confidence medium. **Now highest-expected-value open hypothesis.**
