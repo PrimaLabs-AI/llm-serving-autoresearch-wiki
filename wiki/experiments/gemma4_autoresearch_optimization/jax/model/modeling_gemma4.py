@@ -770,8 +770,15 @@ class Gemma4ForCausalLM(nnx.Module):
         self,
         input_ids: jax.Array,
         position_ids: Optional[jax.Array] = None,
+        *,
+        return_hidden: bool = False,
     ) -> jax.Array:
         hidden = self.model(input_ids, position_ids)  # (B, T, D)
+        if return_hidden:
+            # Exp 47 (levanter fused CE) consumes raw hidden + lm_head weight
+            # and applies softcap inline inside the Pallas kernel, so we
+            # skip the [B, T, V] logits materialization entirely here.
+            return hidden
         if self._tied:
             # lm_head(x) = x @ embed_weight.T  — weight is (vocab, hidden)
             weight = self.model.embed_tokens.weight.value
@@ -785,6 +792,16 @@ class Gemma4ForCausalLM(nnx.Module):
             logits = sc_f * jnp.tanh(logits.astype(jnp.float32) / sc_f)
             logits = logits.astype(hidden.dtype)
         return logits
+
+    def lm_head_weight(self) -> jax.Array:
+        """Return the ``[V, H]`` lm_head / embedding weight used by the fused CE path.
+
+        Weight is tied to ``embed_tokens`` when ``tie_word_embeddings=True``
+        (Gemma 4 E4B). Callers in the fused-CE path transpose to ``[H, V]``.
+        """
+        if self._tied:
+            return self.model.embed_tokens.weight.value
+        return self.lm_head.weight.value
 
 
 __all__ = [

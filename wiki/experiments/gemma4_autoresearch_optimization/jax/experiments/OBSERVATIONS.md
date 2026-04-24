@@ -219,3 +219,53 @@ The only correct path is a **kernel fork** with a softcap pre-op applied inline 
 2. Updated view of the program.md "Pallas kernels to TRY" table (line 107): tokamax LCE is listed as a drop-in candidate, but it's **not** a drop-in for any softcap model (Gemma 2/3/4). Logged as an edit-suggestion for the table (not in this experiment's scope to change).
 
 **Follow-ups (unchanged ranking)**: `collective-permute-done` audit (exp 38-style) → Pallas RMSNorm → scan-over-layers → any future Gemma-CE kernel build that enables this exp's hypothesis.
+
+## exp 47 — marin/levanter fused Pallas linear+softcap+CE on JAX stack (REJECTED, −5.61 % TPS, custom-call + all-gather tax)
+
+See [2026-04-24-exp47-jax-levanter-ce-rejected.md](2026-04-24-exp47-jax-levanter-ce-rejected.md) for the full page.
+
+**Config**:
+- Command diff from exp 36: `JAX_CE_IMPL=levanter` + `LEVANTER_PALLAS_CE_AUTOTUNE_ON_MISS=0` env vars + new `jax/model/kernels/fused_ce/` import shim + wiring in `jax/train.py` `forward_loss` (`JAX_CE_IMPL=levanter` branch calls `Gemma4ForCausalLM.__call__(..., return_hidden=True)` to bypass lm_head + softcap in the model, then calls levanter's `fused_cross_entropy_loss_and_logsumexp_penalty` with `logit_soft_cap=30.0` inside a `jax.shard_map` wrapper) + a small `Gemma4ForCausalLM.lm_head_weight()` helper on the model + the `return_hidden` kwarg on `__call__`.
+- Profile path: [`raw/profiles/2026-04-24-gemma4-jax-exp47-levanter-ce/`](../../../../../raw/profiles/2026-04-24-gemma4-jax-exp47-levanter-ce/) (local) + `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-24-gemma4-jax-exp47-levanter-ce/` (GCS mirror).
+- Experiment page: `2026-04-24-exp47-jax-levanter-ce-rejected.md`.
+
+**Hypothesis**: Replace the JAX-stack CE sequence (`hidden @ W.T → softcap → bf16 log_softmax → NLL`) with levanter's fused Pallas Mosaic-TPU kernel that applies softcap **inline on each VMEM logits tile** before the streaming `log_softmax`. This is the only public TPU Pallas CE kernel with a `logit_soft_cap` kwarg — the exact gap that made exp 43 invalid against tokamax. Expected: ~1.3 GiB HBM freed + small TPS gain (≤ +3 %) from eliminating the `[B, S, V]` logits pass.
+
+**Key pre-work**:
+1. **Import shim** (`jax/model/kernels/fused_ce/__init__.py`, 88 LOC): levanter's top-level package imports `equinox`, `draccus`, `trainer`, etc. — all heavy deps not in `gemma4_py313`. Pre-populating `sys.modules` with empty stubs for `levanter` and `rigging.filesystem` lets the kernel submodules (`levanter.kernels.pallas.fused_cross_entropy_loss.*`) load in isolation. Autotune-on-miss disabled via env var; we pass explicit `BlockSizes` to sidestep the `rigging` GCS-writer path entirely.
+2. **Parity harness** (`jax/tools/parity_levanter_ce.py`, 140 LOC): reference (materialize logits + softcap + bf16 log_softmax + NLL) vs levanter (fused kernel w/ `logit_soft_cap=30.0`, `weight=mask`, `reduction="sum"`) on a `B=1 S=128 H=2560 V=262144` random batch, 10 % ignore-index. Result: `|diff| = 0.048` vs tol 0.05 — **PASS**.
+3. **Block-size hand-pick**: Gemma 4 E4B (V=262144, H=2560) lands in no TPU-tuned bucket (`tuned_block_sizes.py` TPU buckets top out at V=131072; `gb10-large-vocab-mid-batch` is NVIDIA-GB10-only). Default `(1024, 512, 1024)` overruns 32 MiB VMEM by 8 MiB. Used `(b=1024, h=256, v=512)`. `b_block` had to be ≥1024 (multiple-of-1024 invariant in the kernel's `_validate_inputs` when per-shard B≥1024; our per-device flat batch is B*S=3*1024=3072).
+4. **Shard_map wrap**: Mosaic custom-calls cannot be auto-partitioned (same constraint as splash in [`pallas_attention.py`](../model/pallas_attention.py)). `in_specs=(P('fsdp', None), P('fsdp'), P('fsdp'), P(None, None))` for `(hidden, labels, mask, w_hv)` — lm_head weight all-gathered to replicated `[H, V]`. `jax.lax.psum(local_sum, axis_name='fsdp')` sums partial loss-sums across shards; `out_specs=P()` returns a replicated scalar.
+
+**Expected outcome**: +1–3 % TPS, peak HBM −1.3 GiB (86.8 % → ~82 %). Follow-on to the exp 43 rejection; softcap gap closed.
+
+**Actual outcome**:
+- TPS (mean steps 2–19): 34,614 → **32,671** (Δ **−5.61 %** — beyond the ±0.5 % flat band → **rejected**)
+- Step time (mean 2–19): 355.0 → **376.1 ms** (+21.1 ms / +5.95 %)
+- Peak HBM: 27.11 GiB → n/a (profile captured but not parsed — all-gather of w_hv adds temporary 1.31 GiB during CE call window)
+- Step 0 compile: 167 s → **15 s** (compile-cache hit from exp 45; not a new win)
+- Parity: **PASS** (|diff| 0.048 vs tol 0.05)
+- Smoke step-4 loss: exp 36 = 2.1875 → exp 47 = 2.1979 (**+0.47 %**, well within 5 % semantic-drift bar)
+- Later-step loss drift: step 19 exp 36 = 1.84 vs exp 47 = 2.00 (+9 %) — expected bf16-parity-noise compounding through Adam state across 20 steps; not a semantic change.
+
+**Profile signals** (inferred, not yet xprof-browsed):
+- Two new costs added vs exp 36:
+  1. **Pallas custom-call boundary**: 3 Mosaic calls per step (fwd + two bwd halves) × ~5 ms launch latency = ~15 ms. Matches the custom-call-tax pattern from torchax exp 33 (Pallas RMSNorm, +36 ms / step regression from the same cause).
+  2. **`w_hv` all-gather inside shard_map**: 1.31 GiB bf16 of lm_head weight (262144 × 2560) is all-gathered per forward pass (and again in backward). XLA may have been folding a collective-matmul version of this into the lm_head matmul in exp 36 via `AllGatherMatmul` fusion; moving the matmul into a Pallas custom-call breaks that fusion and exposes the gather on the critical path. This accounts for most of the remaining ~6 ms step-time delta.
+- Total CE cost in exp 36 was <3 % of step time (~10 ms of 355 ms) — replacing a tightly-XLA-fused 10-ms op with a 3.5-ms Pallas kernel + 17–20 ms of new boundary + collective overhead is structurally net-negative.
+
+**Analysis**: correctness premise held (softcap applies inline, `[B, S, V]` never materializes); throughput premise did not (CE isn't the bottleneck on this workload — splash + b=3 already amortized per-call overhead; the lm_head matmul + softcap + log_softmax was living in one XLA loop fusion). The Pallas CE kernel wins where CE is a meaningful fraction of step time (e.g. much longer sequences with larger logits-tile HBM pressure, or when CE is already on the critical path). At b=3 s=1024 v6e-4 it loses.
+
+**Decision**: `discard` (rejected). Commit `573852c`. Exp 36 (34,614 TPS, 23.05 % MFU) remains the JAX-stack best.
+
+**Durable artifacts**:
+1. **`JAX_CE_IMPL=levanter` env gate + import shim** (`jax/model/kernels/fused_ce/__init__.py`). Makes the vendored levanter kernel importable from this trainer tree without forking it or installing equinox/draccus/rigging. Useful for future variants (e.g., if we rerun at seq=2048 where the cost-benefit flips, or if we eventually V-shard the CE).
+2. **Parity harness** (`jax/tools/parity_levanter_ce.py`). Permanent correctness gate for any future CE kernel swap — run it before a benchmark run, refuse to proceed if |diff| > tol.
+3. **`Gemma4ForCausalLM.__call__(return_hidden=True)` + `lm_head_weight()`** — clean seams for any future CE-replacement experiment (tokamax-with-softcap kernel, hand-rolled streamed CE, etc.). Generalizes beyond exp 47.
+4. **Empirical confirmation of the "Pallas custom-call tax" heuristic on the JAX stack**. Matches torchax exp 33 (Pallas RMSNorm) on the sibling stack: when the baseline is XLA-fused tightly and the op being replaced is a small fraction of step time, dropping in a Pallas kernel structurally costs more than it saves. Worth promoting to program.md as a general rule.
+
+**Follow-ups (ranked)**:
+1. **Retry at seq=2048 b=2** (on top of [exp 40](2026-04-23-exp40-jax-seq2048-batch2-accepted.md)). Logits tile is 2× larger; HBM pressure is higher; the kernel's savings might cross the tax. One-flag-flip experiment. Confidence medium-low. Effort S.
+2. **V-sharded fused CE kernel variant**. Accept `w_hv` with `P(None, 'fsdp')` sharding, do per-shard partial `logsumexp`, all-reduce the partial `lse` across fsdp inside the kernel boundary, emit the final NLL. Removes the 1.31 GiB all-gather. Kernel-edit, not an integration fix. Effort M, confidence low (XLA's AllGatherMatmul fusion may already be doing this optimally).
+3. **Tune block sizes** on v6e-specific Gemma4 shapes. Sweep `(b, h, v)` via parity harness + 2-min benchmark loops. Unlikely to flip the verdict (the tax is structural) but could reclaim 1–3 %.
+4. **Unchanged from exp 36 follow-ups**: `collective-permute-done` audit → Pallas RMSNorm → scan-over-layers.

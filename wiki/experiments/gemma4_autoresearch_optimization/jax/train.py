@@ -231,9 +231,100 @@ def main(argv: Optional[list] = None) -> int:
         ce_dtype = jnp.bfloat16
         print(f"[ce] JAX_CE_DTYPE=bf16 — log_softmax in bf16 (default; ~1.5 GiB saved)")
 
+    # CE impl gate (exp 47). Default = materialized bf16 path (exp 36 best).
+    # `JAX_CE_IMPL=levanter` loads marin/levanter's Pallas TPU fused CE kernel
+    # (softcap + log_softmax + NLL, no [B,S,V] logits materialization).
+    ce_impl_env = os.environ.get("JAX_CE_IMPL", "default").lower()
+    levanter_ce_fn = None
+    if ce_impl_env == "levanter":
+        # Disable the on-miss autotune path (needs a `rigging` GCS writer we
+        # don't ship); we pass explicit block sizes for our shape instead.
+        os.environ.setdefault("LEVANTER_PALLAS_CE_AUTOTUNE_ON_MISS", "0")
+        from model.kernels.fused_ce import load_kernel
+        levanter_ce_fn = load_kernel()
+        from levanter.kernels.pallas.fused_cross_entropy_loss.config import BlockSizes as _LevBlocks
+        # Hand-picked block sizes for Gemma 4 E4B on v6e (V=262144, H=2560).
+        # Default (1024, 512, 1024) overruns 32 MiB VMEM; (128, 256, 512) fits
+        # and keeps the kernel streaming (parity-verified bf16 diff ~0.05).
+        # TPU-label-layout invariant: b_block_size must be a multiple of 1024
+        # when the per-shard batch B >= 1024 (validated by the kernel's
+        # `_validate_inputs`). Our per-device flat batch is B*S = 3*1024 = 3072,
+        # so we use 1024.
+        _levanter_block_sizes = _LevBlocks(
+            b_block_size=1024,
+            h_block_size=256,
+            v_block_size=512,
+        )
+        softcap_value = float(text_cfg.final_logit_softcapping or 0.0) or None
+        print(f"[ce] JAX_CE_IMPL=levanter — fused Pallas CE w/ softcap={softcap_value} "
+              f"block_sizes=(b={_levanter_block_sizes.b_block_size}, "
+              f"h={_levanter_block_sizes.h_block_size}, v={_levanter_block_sizes.v_block_size})")
+    else:
+        _levanter_block_sizes = None
+        softcap_value = None
+        print(f"[ce] JAX_CE_IMPL={ce_impl_env} — materialized log_softmax path (exp 36 default)")
+
+    use_levanter_ce = levanter_ce_fn is not None
+
+    # Shard_map wrapper is required because Mosaic custom calls cannot be
+    # auto-partitioned (same pattern as splash_attention in pallas_attention.py).
+    # In-specs pin hidden and labels to the per-chip FSDP batch shard and
+    # replicate the lm_head weight (transposed to [H, V]) — XLA will insert
+    # the all-gather on w_hv, same cost the materialized lm_head matmul
+    # already pays in the exp-36 path.
+    if use_levanter_ce:
+        from jax.sharding import PartitionSpec as P
+
+        def _levanter_ce_sharded(flat_hidden, safe_labels, mask, w_hv):
+            def _kernel_call(fh, sl, msk, w):
+                local_sum = levanter_ce_fn(
+                    fh,
+                    sl,
+                    w,
+                    reduction="sum",
+                    weight=msk,
+                    logit_soft_cap=softcap_value,
+                    implementation="pallas_tpu",
+                    dtype=jnp.bfloat16,
+                    block_sizes=_levanter_block_sizes,
+                )
+                # Sum partial loss_sums across the FSDP shards so the caller's
+                # scalar division-by-mask-sum matches the global mean.
+                return jax.lax.psum(local_sum, axis_name="fsdp")
+
+            return jax.shard_map(
+                _kernel_call,
+                mesh=mesh,
+                in_specs=(
+                    P("fsdp", None),  # flat_hidden: [B*S, H] sharded on B
+                    P("fsdp"),        # safe_labels: [B*S] sharded on B
+                    P("fsdp"),        # mask: [B*S] sharded on B
+                    P(None, None),    # w_hv: [H, V] replicated (all-gathered)
+                ),
+                out_specs=P(),  # scalar loss — psum makes it replicated.
+                check_vma=False,
+            )(flat_hidden, safe_labels, mask, w_hv)
+
     # Pure-jax forward+loss, closing over graphdef + ce_dtype (static). -------
     def forward_loss(state, input_ids, labels):
         model = nnx.merge(graphdef, state)
+        if use_levanter_ce:
+            # Exp 47 path: skip lm_head+softcap in the model; fused kernel
+            # recomputes hidden @ W.T streaming with softcap inline.
+            hidden = model(input_ids, return_hidden=True)  # (B, T, D) bf16
+            W = model.lm_head_weight()                     # (V, H) bf16 tied to embed
+            B_, S_, D_ = hidden.shape
+            flat_hidden = hidden.reshape(B_ * S_, D_)
+            flat_labels = labels.reshape(-1)
+            mask = (flat_labels != IGNORE_INDEX).astype(jnp.float32)
+            safe_labels = jnp.where(
+                flat_labels == IGNORE_INDEX, jnp.zeros_like(flat_labels), flat_labels
+            )
+            # Transpose [V, H] -> [H, V] for levanter's kernel layout.
+            w_hv = W.T
+            loss_sum = _levanter_ce_sharded(flat_hidden, safe_labels, mask, w_hv)
+            loss = loss_sum / jnp.maximum(mask.sum(), 1.0)
+            return loss.astype(jnp.float32)
         logits = model(input_ids)  # (B, T, V) — bf16 from the model forward
         # CE with ignore_index=-100. When ce_dtype=bf16 (default), log_softmax
         # runs entirely in bf16 — no fp32 [B*S, V] intermediate. Gemma 4's
