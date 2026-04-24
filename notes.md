@@ -23,9 +23,6 @@ now based on this information reaserch every repo you listed and create a direct
 
 
 
-
-
-
 Connect Obsidian
 This is the crucial step to avoid the extra subfolder trap.
 - Open the Obsidian app.
@@ -47,3 +44,4 @@ Create torchax trainer that can train for finetune model from checkpoint. Use in
 
 Trainer can use wiki dataset by default. It should allow configuring nubmer of steps to run, and enable profiling api to dump profiles for specified steps.
 
+Now convert model to jax trying to follow model definition as close as possible where it make sense. Add new converted model to /mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki/wiki/experiments/gemma4_autoresearch_optimization/jax folder. Also create a trainer that should have same functinality as a torchax trainer that was created previously and have similar flags.

@@ -33,24 +33,24 @@ Single-author community kernel library positioning as "production-grade." Claims
 
 | Kernel | Source | Backend | Stability | Perf claim | Use case | Callers | Notes |
 |---|---|---|---|---|---|---|---|
-| flash_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/flash_attention | `mosaic_tpu` | experimental | "O(N) memory complexity" | training/inference MHA | EasyDeL `operations/kernels/flash_attention.py` | fwd+bwd split |
-| flash_mla | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/flash_mla | `mosaic_tpu` | experimental | none | DeepSeek-style MLA training | EasyDeL MLA path | fwd+bwd |
-| blocksparse_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/blocksparse_attention | `mosaic_tpu` | experimental | none | sparse-mask training | EasyDeL `blocksparse_attention.py` | explicit mask module |
-| deepseek_attn | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/deepseek_attn | `mosaic_tpu` | experimental | none | DeepSeek attention | EasyDeL | fwd+bwd |
-| page_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/page_attention | `mosaic_tpu` | experimental | none | decode inference | EasyDeL inference | fwd-only |
-| prefill_page_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/prefill_page_attention | `mosaic_tpu` | experimental | none | paged prefill | EasyDeL | fwd-only |
-| ragged_page_attention_v2 | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_page_attention_v2 | `mosaic_tpu` | experimental | none | continuous batching decode | EasyDeL | parallels Google's RPA v2 |
-| ragged_page_attention_v3 | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_page_attention_v3 | `mosaic_tpu` | experimental | none | continuous batching decode | EasyDeL | includes dedicated `_h64` variant |
-| ragged_decode_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_decode_attention | `mosaic_tpu` | experimental | none | decode-only | EasyDeL | fwd-only |
-| multi_latent_ragged_page_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/multi_latent_ragged_page_attention | `mosaic_tpu` | experimental | none | MLA paged decode | EasyDeL | fwd-only |
-| multi_latent_ragged_page_attention_v2 | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/multi_latent_ragged_page_attention_v2 | `mosaic_tpu` | experimental | none | MLA paged decode v2 | EasyDeL | fwd-only |
-| gated_delta_rule | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/gated_delta_rule | `mosaic_tpu` | experimental | README: "3.6x speedup" for ragged GDR decode | GDN-style linear attention training | EasyDeL GDR op | fwd+bwd |
-| ragged_gated_delta_rule | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_gated_delta_rule | `mosaic_tpu` | experimental | see above | GDR inference | EasyDeL | fwd-only |
-| grouped_matmul (v1/v2/v3) | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/grouped_matmul — also `grouped_matmulv2`, `grouped_matmulv3` | `mosaic_tpu` | experimental | none | MoE / grouped gemm | EasyDeL MoE | three staged iterations in-tree |
-| quantized_matmul | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/quantized_matmul | `mosaic_tpu` | experimental | benchmarks vs XLA in `benchmarks/` | quantized gemm | EasyDeL | fwd+bwd+core |
-| all_gather_matmul | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/all_gather_matmul | `mosaic_tpu` | experimental | none | TP-fused collective | EasyDeL | fused all-gather ∘ matmul |
-| reduce_scatter_matmul | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/reduce_scatter_matmul | `mosaic_tpu` | experimental | none | TP-fused collective | EasyDeL | complements all_gather_matmul |
-| ring_attention | https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ring_attention | `mosaic_tpu` | experimental | none | sequence-parallel long ctx | EasyDeL RingAttn | **Docstring: "wraps Splash Attention with ring communication topology" — orchestration, not novel kernel** |
+| flash_attention | [flash_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/flash_attention) | `mosaic_tpu` | experimental | "O(N) memory complexity" | training/inference MHA | EasyDeL `operations/kernels/flash_attention.py` | fwd+bwd split |
+| flash_mla | [flash_mla/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/flash_mla) | `mosaic_tpu` | experimental | none | DeepSeek-style MLA training | EasyDeL MLA path | fwd+bwd |
+| blocksparse_attention | [blocksparse_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/blocksparse_attention) | `mosaic_tpu` | experimental | none | sparse-mask training | EasyDeL `blocksparse_attention.py` | explicit mask module |
+| deepseek_attn | [deepseek_attn/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/deepseek_attn) | `mosaic_tpu` | experimental | none | DeepSeek attention | EasyDeL | fwd+bwd |
+| page_attention | [page_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/page_attention) | `mosaic_tpu` | experimental | none | decode inference | EasyDeL inference | fwd-only |
+| prefill_page_attention | [prefill_page_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/prefill_page_attention) | `mosaic_tpu` | experimental | none | paged prefill | EasyDeL | fwd-only |
+| ragged_page_attention_v2 | [ragged_page_attention_v2/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_page_attention_v2) | `mosaic_tpu` | experimental | none | continuous batching decode | EasyDeL | parallels Google's RPA v2 |
+| ragged_page_attention_v3 | [ragged_page_attention_v3/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_page_attention_v3) | `mosaic_tpu` | experimental | none | continuous batching decode | EasyDeL | includes dedicated `_h64` variant |
+| ragged_decode_attention | [ragged_decode_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_decode_attention) | `mosaic_tpu` | experimental | none | decode-only | EasyDeL | fwd-only |
+| multi_latent_ragged_page_attention | [multi_latent_ragged_page_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/multi_latent_ragged_page_attention) | `mosaic_tpu` | experimental | none | MLA paged decode | EasyDeL | fwd-only |
+| multi_latent_ragged_page_attention_v2 | [multi_latent_ragged_page_attention_v2/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/multi_latent_ragged_page_attention_v2) | `mosaic_tpu` | experimental | none | MLA paged decode v2 | EasyDeL | fwd-only |
+| gated_delta_rule | [gated_delta_rule/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/gated_delta_rule) | `mosaic_tpu` | experimental | README: "3.6x speedup" for ragged GDR decode | GDN-style linear attention training | EasyDeL GDR op | fwd+bwd |
+| ragged_gated_delta_rule | [ragged_gated_delta_rule/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ragged_gated_delta_rule) | `mosaic_tpu` | experimental | see above | GDR inference | EasyDeL | fwd-only |
+| grouped_matmul (v1/v2/v3) | [grouped_matmul/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/grouped_matmul), [grouped_matmulv2/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/grouped_matmulv2), [grouped_matmulv3/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/grouped_matmulv3) | `mosaic_tpu` | experimental | none | MoE / grouped gemm | EasyDeL MoE | three staged iterations in-tree |
+| quantized_matmul | [quantized_matmul/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/quantized_matmul) | `mosaic_tpu` | experimental | benchmarks vs XLA in `benchmarks/` | quantized gemm | EasyDeL | fwd+bwd+core |
+| all_gather_matmul | [all_gather_matmul/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/all_gather_matmul) | `mosaic_tpu` | experimental | none | TP-fused collective | EasyDeL | fused all-gather ∘ matmul |
+| reduce_scatter_matmul | [reduce_scatter_matmul/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/reduce_scatter_matmul) | `mosaic_tpu` | experimental | none | TP-fused collective | EasyDeL | complements all_gather_matmul |
+| ring_attention | [ring_attention/](https://github.com/erfanzar/ejkernel/tree/main/ejkernel/kernels/_pallas/tpu/ring_attention) | `mosaic_tpu` | experimental | none | sequence-parallel long ctx | EasyDeL RingAttn | **Docstring: "wraps Splash Attention with ring communication topology" — orchestration, not novel kernel** |
 
 Parallel GPU surface under `ejkernel/kernels/_pallas/gpu/` (ragged_decode_attention, scaled_dot_product_attention) + `_cuda/`, `_cute/` (FlashAttention, quantized_matmul, unified_attention, chunked_prefill_paged_decode, ragged_page_attention_v3, blocksparse_attention) — out of scope for TPU catalog but noted.
 
@@ -60,16 +60,16 @@ Training/serving framework wrapping ejkernel into operation registry. TPU kernel
 
 | File | Source | Role |
 |---|---|---|
-| `operations/kernels/flash_attention.py` | https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/flash_attention.py | Registry wrapper for ejkernel flash_attention |
-| `operations/kernels/ring_attention.py` | https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ring_attention.py | Wraps ejkernel ring_attention (Splash-based) |
-| `operations/kernels/blocksparse_attention.py` | https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/blocksparse_attention.py | Splash/BlockSparse wrapper |
-| `operations/kernels/ragged_page_attention.py` | https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ragged_page_attention.py | Paged attention wrapper |
-| `operations/kernels/multi_latent_ragged_page_attention.py` | same dir | MLA paged wrapper |
-| `operations/kernels/gated_delta_rule.py`, `inference_gdn.py`, `kda.py` | same dir | GDN/KDA ops |
-| `operations/kernels/ssm1.py`, `ssm2.py` | same dir | Mamba-1 / Mamba-2 ops |
-| `operations/kernels/glm_moe_dsa_indexer.py` | same dir | GLM MoE DSA index op — **unique to EasyDeL** |
-| `operations/kernels/unified_attention.py` | same dir | Unified prefill+decode |
-| `operations/kernels/paged_flash_attention.py` | same dir | Paged flash variant |
+| `operations/kernels/flash_attention.py` | [flash_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/flash_attention.py) | Registry wrapper for ejkernel flash_attention |
+| `operations/kernels/ring_attention.py` | [ring_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ring_attention.py) | Wraps ejkernel ring_attention (Splash-based) |
+| `operations/kernels/blocksparse_attention.py` | [blocksparse_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/blocksparse_attention.py) | Splash/BlockSparse wrapper |
+| `operations/kernels/ragged_page_attention.py` | [ragged_page_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ragged_page_attention.py) | Paged attention wrapper |
+| `operations/kernels/multi_latent_ragged_page_attention.py` | [multi_latent_ragged_page_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/multi_latent_ragged_page_attention.py) | MLA paged wrapper |
+| `operations/kernels/{gated_delta_rule,inference_gdn,kda}.py` | [gated_delta_rule.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/gated_delta_rule.py), [inference_gdn.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/inference_gdn.py), [kda.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/kda.py) | GDN/KDA ops |
+| `operations/kernels/{ssm1,ssm2}.py` | [ssm1.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ssm1.py), [ssm2.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/ssm2.py) | Mamba-1 / Mamba-2 ops |
+| `operations/kernels/glm_moe_dsa_indexer.py` | [glm_moe_dsa_indexer.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/glm_moe_dsa_indexer.py) | GLM MoE DSA index op — **unique to EasyDeL** |
+| `operations/kernels/unified_attention.py` | [unified_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/unified_attention.py) | Unified prefill+decode |
+| `operations/kernels/paged_flash_attention.py` | [paged_flash_attention.py](https://github.com/erfanzar/EasyDeL/blob/main/easydel/operations/kernels/paged_flash_attention.py) | Paged flash variant |
 
 Stability: experimental — kernel set churns weekly. Apache-2.0.
 
@@ -79,8 +79,8 @@ Predecessor of ejkernel — multi-backend FA2 wrapper. Current tree (`jax_flash_
 
 | Module | Source | Backend | Stability | Notes |
 |---|---|---|---|---|
-| flash_attention (Triton) | https://github.com/erfanzar/jax-flash-attn2/tree/main/jax_flash_attn2/flash_attention_triton | `triton` | experimental | GPU only |
-| flash_attention (JAX ref) | https://github.com/erfanzar/jax-flash-attn2/tree/main/jax_flash_attn2/flash_attention_jax | `xla` | research | Reference, not a Pallas kernel |
+| flash_attention (Triton) | [flash_attention_triton/](https://github.com/erfanzar/jax-flash-attn2/tree/main/jax_flash_attn2/flash_attention_triton) | `triton` | experimental | GPU only |
+| flash_attention (JAX ref) | [flash_attention_jax/](https://github.com/erfanzar/jax-flash-attn2/tree/main/jax_flash_attn2/flash_attention_jax) | `xla` | research | Reference, not a Pallas kernel |
 
 ## 6.4 haoliuhl/ringattention
 
@@ -113,7 +113,7 @@ Gated Linear Attention from Yang et al. ([arXiv:2312.06635](https://arxiv.org/ab
 | Kernel | Source | Backend | Stability | Perf claim | Use case | Callers | Notes |
 |---|---|---|---|---|---|---|---|
 | cumsum_kernel | [ops.py](https://github.com/zhixuan-lin/gla-jax/blob/main/ops.py) | `triton` | research | none | bidirectional cumsum in GLA | `gla.py` benchmark | `max_items=16384`, num_warps=4 |
-| rnn_kernel | same file | `triton` | research | none | parallel-scan linear RNN with log-space gates | `gla.py` | `max_items=8192`, key-value outer loop |
+| rnn_kernel | [ops.py](https://github.com/zhixuan-lin/gla-jax/blob/main/ops.py) (same file as `cumsum_kernel`) | `triton` | research | none | parallel-scan linear RNN with log-space gates | `gla.py` | `max_items=8192`, key-value outer loop |
 
 8⭐, MIT, last push Jan 2025 — essentially abandoned.
 
@@ -147,12 +147,12 @@ Experimental research repo. `tpu_inference_kernel/` subtree is **a wholesale ven
 |---|---|---|---|---|
 | flash_attention | [tpu_inference_kernel/flash_attention/kernel.py](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/flash_attention/kernel.py) | `mosaic_tpu` | stable (vendored Google) | Copyright 2025 Google LLC |
 | fused_moe v1 | [tpu_inference_kernel/fused_moe/v1/kernel.py](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/fused_moe/v1/kernel.py) | `mosaic_tpu` | stable (vendored) | Uses SMEM/VMEM/semaphores, double-buffered weights, a2a-sharded experts, optional per-group quantized weights |
-| megablox/gmm | `.../megablox/gmm.py` | `mosaic_tpu` | stable (vendored) | — |
-| mla/v1 | `.../mla/v1/kernel.py` | `mosaic_tpu` | stable (vendored) | "TPU-Friendly and Data-Movement-Friendly MLA Ragged Paged Attention" |
-| ragged_paged_attention/v2 | `.../ragged_paged_attention/v2/kernel.py` | `mosaic_tpu` | stable (vendored) | + `ragged_kv_cache_update.py`, `tuned_block_sizes.py` |
-| ragged_paged_attention/v3 | `.../ragged_paged_attention/v3/kernel.py` + `kernel_hd64.py` | `mosaic_tpu` | stable (vendored) | head-dim-64 specialization |
-| quantized_matmul | `.../quantized_matmul/kernel.py` | `mosaic_tpu` | stable (vendored) | + tuned_block_sizes |
-| collectives/all_gather_matmul | `.../collectives/all_gather_matmul.py` | `mosaic_tpu` | stable (vendored) | imports from `tpu_inference.kernels.collectives` |
+| megablox/gmm | [`tpu_inference_kernel/megablox/gmm.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/megablox/gmm.py) | `mosaic_tpu` | stable (vendored) | — |
+| mla/v1 | [`tpu_inference_kernel/mla/v1/kernel.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/mla/v1/kernel.py) | `mosaic_tpu` | stable (vendored) | "TPU-Friendly and Data-Movement-Friendly MLA Ragged Paged Attention" |
+| ragged_paged_attention/v2 | [`tpu_inference_kernel/ragged_paged_attention/v2/kernel.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/ragged_paged_attention/v2/kernel.py) | `mosaic_tpu` | stable (vendored) | + [`ragged_kv_cache_update.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/ragged_paged_attention/v2/ragged_kv_cache_update.py), [`tuned_block_sizes.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/ragged_paged_attention/v2/tuned_block_sizes.py) |
+| ragged_paged_attention/v3 | [`tpu_inference_kernel/ragged_paged_attention/v3/kernel.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/ragged_paged_attention/v3/kernel.py) + [`kernel_hd64.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/ragged_paged_attention/v3/kernel_hd64.py) | `mosaic_tpu` | stable (vendored) | head-dim-64 specialization |
+| quantized_matmul | [`tpu_inference_kernel/quantized_matmul/kernel.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/quantized_matmul/kernel.py) | `mosaic_tpu` | stable (vendored) | + tuned_block_sizes |
+| collectives/all_gather_matmul | [`tpu_inference_kernel/collectives/all_gather_matmul.py`](https://github.com/labyrinth-ssr/tpu-research/blob/main/tpu_inference_kernel/collectives/all_gather_matmul.py) | `mosaic_tpu` | stable (vendored) | imports from `tpu_inference.kernels.collectives` |
 
 ## 6.10 ashioyajotham/recompute_dont_restore
 

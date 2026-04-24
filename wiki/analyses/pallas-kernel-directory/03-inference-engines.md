@@ -35,13 +35,13 @@ The most comprehensive Pallas kernel collection among the three. All `mosaic_tpu
 
 | Kernel | File | TPU versions | Entries |
 |---|---|---|---|
-| RPA v2 | `ragged_paged_attention/v2/tuned_block_sizes.py` | v5, v6 | ~1,200 |
-| RPA v3 | `ragged_paged_attention/v3/tuned_block_sizes.py` | v6e, v7 | hundreds |
-| RPA v3 hd64 | `ragged_paged_attention/v3/tuned_block_sizes_hd64.py` | v6e, v7 | tens |
-| quantized_matmul | `quantized_matmul/tuned_block_sizes.py` | v6, v7 | 600+ |
-| megablox gmm/v2 | `megablox/tuned_block_sizes.py` | dtype-keyed | 47 |
-| fused_moe v1 | `fused_moe/v1/tuned_block_sizes.py` | **v7 only** | 28 |
-| all_gather_matmul | `collectives/all_gather_matmul_tuned_block_sizes.py` | v5e/v6e/v7x | microbench-driven |
+| RPA v2 | [`ragged_paged_attention/v2/tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/ragged_paged_attention/v2/tuned_block_sizes.py) | v5, v6 | ~1,200 |
+| RPA v3 | [`ragged_paged_attention/v3/tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/ragged_paged_attention/v3/tuned_block_sizes.py) | v6e, v7 | hundreds |
+| RPA v3 hd64 | [`ragged_paged_attention/v3/tuned_block_sizes_hd64.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/ragged_paged_attention/v3/tuned_block_sizes_hd64.py) | v6e, v7 | tens |
+| quantized_matmul | [`quantized_matmul/tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/quantized_matmul/tuned_block_sizes.py) | v6, v7 | 600+ |
+| megablox gmm/v2 | [`megablox/tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/megablox/tuned_block_sizes.py) | dtype-keyed | 47 |
+| fused_moe v1 | [`fused_moe/v1/tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/fused_moe/v1/tuned_block_sizes.py) | **v7 only** | 28 |
+| all_gather_matmul | [`collectives/all_gather_matmul_tuned_block_sizes.py`](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/kernels/collectives/all_gather_matmul_tuned_block_sizes.py) | v5e/v6e/v7x | microbench-driven |
 
 Per-hardware support CSVs live in `support_matrices/{release,nightly}/{v6e,v7x}/{default,flax_nnx,vllm}/kernel_support_matrix.csv`.
 
