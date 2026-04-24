@@ -416,3 +416,20 @@ See [2026-04-24-exp50-jax-scan-tuned-potential.md](2026-04-24-exp50-jax-scan-tun
 3. **exp 55 — scan_layers at seq=2048 b=1 fp32-master**. Compile-time win durable; TPS may differ from the exp 50 outcome at a different shape. Effort S (just env-var flip).
 4. **exp 56 — 2D mesh (dp=2, tp=2) at seq=8192**. K/V replicated on tp=2 (num_kv_heads=2 divides 2) — unblocks mixed-sharding. Might fit seq=8192. Effort M. Memory-win-first per program heuristic.
 5. **exp 57 — offload PLE embedding lookup to host**. `embed_tokens_per_layer` is 11 GiB fp32 / 5.5 GiB bf16 — biggest single tensor. Streaming it from host at the first-layer boundary could free enough HBM for seq=4096 or seq=8192. Risky code change. Effort L.
+
+## exp 53 — splash block-size sweep at new-regime baseline (REJECTED, flat)
+
+**Config**: seq=2048 b=1 fp32-master + bf16-compute; two splash block variants {2048, 512} vs exp 52's default block=1024.
+
+- **Variant A (block=2048)**: compile-time `CompileTimeScopedVmemOom` — splash_mha_fwd_residuals needs 32.14 MiB VMEM vs 32 MiB hard limit (144 KiB over). Not runnable.
+- **Variant B (block=512)**: TPS 26,807 — dead flat vs exp 52 (−0.0 %). Same step time median (305.6 ms).
+
+Writeup: [2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md](2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md). Profile GCS mirror: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-24-gemma4-jax-exp53-splash-block512-seq2k-fp32master/`.
+
+**Analysis**: Confirms the old-regime exp 48 plateau observation transfers to the new regime. Splash block size is not a TPS lever for Gemma 4 E4B on v6e-4 at any shape we've measured so far (old regime b=3 s=1024, new regime b=1 s=2048). **Durable heuristic** (promote to program.md Heuristics): "Splash block size is flat across all measured Gemma 4 E4B shapes on v6e-4 with the fused_bwd kernel + SEQ_MINOR layout — don't open a new block-size experiment unless the shape or kernel changes materially."
+
+**Decision**: **discard**. Exp 52 remains new-regime baseline.
+
+## new-regime ceiling analysis (exp 52–53 arc)
+
+Filed as [analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md](../../../../analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md). Records the seq=8192 memory-wall data, the non-monotonic XLA compile-time peak observation, the counter-intuitive `nothing_saveable` / `offload_dot_with_no_batch_dims` regression, and the three-branch forward path (Branch A: optimize at seq=2048; Branch B: larger mesh; Branch C: memory-saving code changes).

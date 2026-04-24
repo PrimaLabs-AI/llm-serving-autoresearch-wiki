@@ -1,5 +1,13 @@
 # Log
 
+## [2026-04-24] analyze + run-experiment | jax-exp53: splash block-size sweep under new regime (REJECTED, flat) + new-regime ceiling analysis
+
+**Op**: run-experiment + analyze.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md`; `wiki/analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md` (new-regime ceiling analysis); `raw/profiles/2026-04-24-gemma4-jax-exp53-splash-block512-seq2k-fp32master/` + `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-24-gemma4-jax-exp53-splash-block512-seq2k-fp32master/`.
+**Pages updated**: `.../jax/experiments/RESULTS.tsv` (exp53 discard row); `.../jax/experiments/OBSERVATIONS.md` (exp 53 block + ceiling pointer).
+**Key result**: **exp 53 REJECTED** — splash block-size sweep at seq=2048 b=1 fp32-master is flat. Block=2048 (full-tile) hits `CompileTimeScopedVmemOom` (32.14/32.00 MiB, 144 KiB over). Block=512 runs at 26,807 TPS, dead flat vs exp 52's default block=1024 (−0.0 %). Confirms the old-regime exp 48 plateau transfers to the new regime. **Ceiling analysis filed** covering seq=8192 infeasibility on v6e-4 (independent of AMP — legacy bf16 also OOMs), XLA non-monotonic compile-time peak, `nothing_saveable`/offload counter-intuitive regression, and the three-branch forward path (A: optimize at seq=2048; B: v6e-8 mesh; C: memory-saving code changes).
+**Notes**: New durable heuristic for program.md: "Splash block size is flat across all measured Gemma 4 E4B shapes on v6e-4 with the fused_bwd kernel + SEQ_MINOR layout — don't open a new block-size experiment unless the shape or kernel changes materially." Still-open exp 52 follow-ups queued in the new-regime ceiling page: exp 54 (pure-AMP isolation at b=1 s=1024), exp 55 (scan_layers at new regime), exp 56 (2D mesh dp=2 tp=2), exp 57 (PLE embedding host-offload). xprof browser URL for exp 53: http://localhost:8791/?run=2026-04-24-gemma4-jax-exp53-splash-block512-seq2k-fp32master.
+
 ## [2026-04-24] run-experiment | jax-exp52: fp32-master + bf16-compute AMP new-regime baseline (seq=8192 OOMs on v6e-4; seq=2048 b=1 accepted at 26,807 TPS)
 
 **Op**: run-experiment (regime change + new-baseline establishment).

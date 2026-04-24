@@ -1,6 +1,36 @@
 # TPU Performance Autoresearch Wiki — Index
 *Last updated: 2026-04-24 — 180 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 4 analyses + 6 analysis subpages + jax-exp47 rejected page)*
 
+## ⭐ Featured reference — Pallas kernel directory
+
+**[Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md)** — the single most load-bearing reference document in this wiki. A repo-by-repo catalog of **~200 Pallas kernels across ~30 open-source repositories**, each row with a clickable link to the source code, backend (Mosaic-TPU / Mosaic-GPU SM90/SM100 / Triton / XLA fallback), stability tier, any performance claim quoted verbatim from source, application use case, and known callers. Cross-cutting tables group kernels by function (attention, paged-KV, ring, MoE grouped matmul, normalization, GLU, matmul, collectives, SSM/linear-recurrence, cross-entropy, PRNG, non-ML).
+
+Use this page to answer:
+- *"Is there a public Pallas implementation of X?"* — look up X in the [functional-category tables](analyses/2026-04-23-pallas-kernel-directory.md#kernel-inventory-by-functional-category).
+- *"Where is the canonical / production version of X?"* — every row has a `[file](https://github.com/…)` link to the definition.
+- *"Which repos should this wiki ingest next?"* — see [recommended Wave-4 ingestion order](analyses/2026-04-23-pallas-kernel-directory.md#recommended-next-ingestion-wave-wave-4-proposal) ranked by novelty-vs-tokamax and relevance.
+- *"What tuning priors already exist?"* — see [Autotune / perf-tuning artifacts — crown jewels](analyses/2026-04-23-pallas-kernel-directory.md#autotune--perf-tuning-artifacts--crown-jewels) (sglang-jax ~2,000-entry RPA table; tpu-inference 600+ quantized_matmul table; marin/levanter deployment-time autotune harness).
+
+**Six subpages** (split per SCHEMA ~500-line rule) hold the full per-kernel detail:
+
+1. [§1 Upstream JAX + tokamax](analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md) — ~55 kernels. The root of the vendoring graph.
+2. [§2 AI-Hypercomputer stacks](analyses/pallas-kernel-directory/02-ai-hypercomputer.md) — MaxText, MaxDiffusion, JetStream (archiving 2026-02-01).
+3. [§3 Inference engines](analyses/pallas-kernel-directory/03-inference-engines.md) — vLLM tpu-inference (authoritative author), SGLang-JAX, Aphrodite.
+4. [§4 Research labs](analyses/pallas-kernel-directory/04-research-labs.md) — Apple AxLearn (uniquely novel Mamba/SSD/RAttention SSM Pallas), DeepMind repos (RecurrentGemma LRU scan, AlphaFold3 v3.0.1 fused GLU).
+5. [§5 Frameworks & quantization](analyses/pallas-kernel-directory/05-frameworks-quant.md) — Tunix, Qwix, AQT, Jaxite (non-ML FHE), PyTorch/XLA, Marin/Levanter autotune harness.
+6. [§6 Community & research companions](analyses/pallas-kernel-directory/06-community-research.md) — erfanzar/ejkernel (broadest community surface), haoliuhl/ringattention (canonical Ring Attention), plus flagged GPU-only repos misadvertised as "Pallas".
+
+Companion document: [Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — the predecessor repo-level inventory this directory refines to kernel-level.
+
+**Status of open Pallas-related wiki hypotheses after this directory closed**:
+- Ring Attention Pallas impl → **found** (maxdiffusion, haoliuhl, ejkernel — three patterns to choose among).
+- Fused GLU Pallas reference → **found** (AlphaFold3 @ tag v3.0.1; pin the tag).
+- Mamba / SSM Pallas → **found** (axlearn — only public source).
+- **Zig-Zag ring attention on TPU → confirmed absent from every surveyed repo.** Remains an open algorithmic port from Brandon et al. 2023.
+- TPU Pallas RMSNorm/LayerNorm → **confirmed-absent with external evidence**: maxtext/tpu-inference/axlearn/upstream all skip it — XLA-fusion is sufficient. Consistent with the Gemma 4 exp 33 −8.1% empirical result; don't build.
+
+---
+
 ## Models (1)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
 
@@ -234,7 +264,8 @@
 ## Observations (0)
 *None yet.*
 
-## Analyses (4)
+## Analyses (5)
+- [2026-04-24 Gemma 4 E4B — JAX fp32-master + seq=8192 regime ceiling (exp 52–53)](analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md) — new-regime baseline (exp 52 at 26,807 TPS seq=2048 b=1 fp32-master) + seq=8192 infeasibility probe on v6e-4. Legacy bf16 also OOMs at seq=8192 (memory wall is not AMP-specific). XLA compile-time peak HBM non-monotonic in seq_len (seq=6144 = 49.66 GiB, seq=8192 = 35.18 GiB). Three-branch forward path documented.
 - [2026-04-23 Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md) — repo-by-repo catalog of ~200 Pallas kernels across ~30 repos, with source-code refs, stability, perf claims, use cases, and callers. Cross-cutting functional-category tables + 6 subpages ([§1 JAX+tokamax](analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md), [§2 AI-Hypercomputer](analyses/pallas-kernel-directory/02-ai-hypercomputer.md), [§3 Inference engines](analyses/pallas-kernel-directory/03-inference-engines.md), [§4 Research labs](analyses/pallas-kernel-directory/04-research-labs.md), [§5 Frameworks & quant](analyses/pallas-kernel-directory/05-frameworks-quant.md), [§6 Community](analyses/pallas-kernel-directory/06-community-research.md)). Confirms Zig-Zag ring attention absent everywhere; identifies AlphaFold3 @ v3.0.1 fused GLU and apple/axlearn SSM kernels as the key novel content.
 - [2026-04-23 Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — web-research inventory of every public source of Pallas kernel code. Identifies 5 top ingest candidates (maxtext, tpu-inference, maxdiffusion, axlearn, sglang-jax) and updates 3 open hypothesis candidates on the Ultra-Scale Playbook page with reference implementations found in the wild.
 - [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33, torchax stack)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment torchax-stack loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).
