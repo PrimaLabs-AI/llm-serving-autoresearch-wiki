@@ -5,7 +5,7 @@
 
 This repository is an experiment in **autonomous TPU model performance optimization**, end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself.
 
-The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination** — matching what a senior TPU perf engineer would achieve, but much faster, much cheaper, and with the full decision log preserved.
+The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination** .
 
 ## The Core Components
 
@@ -31,98 +31,78 @@ A lighter alternative, popularized by Karpathy in his [**LLM wiki gist**](https:
 
 In practice, using an LLM wiki is straightforward: you point the agent at a source — a paper, a doc page, a codebase — and ask it to summarize into the schema's page format, cross-linked to anything it touches. Ingestion can be as low-lift as *"find every public reference to Pallas TPU kernels, catalog them by repo, backend, stability, and claimed performance improvements, and add the result to the wiki"* — which is exactly how this repo's [Pallas kernel directory](wiki/analyses/2026-04-23-pallas-kernel-directory.md) was built, surveying ~200 kernels across ~30 OSS repos and indexing them by function. The payoff is leverage on every subsequent run: when the agent is scoring optimization hypotheses later, it already knows which Pallas kernels exist in the ecosystem, which are production-grade, and how to apply them — no re-discovery, no hallucinating kernels that don't exist.
 
+**Bonus**: because the wiki is plain markdown with relative links, you can point [**Obsidian**](https://obsidian.md/) — a free, local-first markdown knowledge-base editor — at the wiki directory and immediately get a navigable graph view, backlinks, full-text search, and tag filtering on top of exactly the same files the LLM is reading and writing. Same source of truth, two readers: the agent uses `grep` and direct file I/O, you get a visual UI for browsing what the agent has learned, spot-checking its writeups, or manually exploring the experiment tree.
+
+
+### Your model codebase - what LLM can actually change and optimize
+
+The model code you want to optimize rarely exists in isolation — it lives inside a larger training framework your team owns or forks, like [TorchTitan](https://github.com/pytorch/torchtitan). The wiki structure adapts naturally: add the framework as a git submodule under `raw/code/<slug>`, pin the commit you ingested, and let the agent edit it in place on per-experiment branches. Each experiment is a real diff on a real branch — auditable, revertable, and tied back to the experiment page that produced it, the profile that justified it, and the verdict that accepted or rejected it.
+
+This is the part that distinguishes this setup from "LLM as smart reader." The agent gets **write access** to the model code, not just read access. It can swap an attention kernel, tune a batch size, restructure remat, flip an XLA flag, and then measure whether it actually helped — all under the autoresearch protocol that makes the change reviewable. There are multiple ways to wire this up (submodule, sibling clone, monorepo subdir), and no single right way — pick the one that matches how your team already version-controls the model.
+
+### State of the art repos - optimization reference
+
+The setup so far is enough for the agent to optimize your model on its own — but you can shortcut a lot of the search by handing it a working reference for what "fast on TPU" actually looks like. Ingest a state-of-the-art TPU codebase alongside your own and the optimization question changes shape: instead of *"explore the space of possible optimizations,"* it becomes *"figure out why this reference model is fast, why mine is slow, and close the gap."* That's a much narrower, much more tractable search.
+
+Concrete references worth ingesting: for TPU training, [MaxText](https://github.com/AI-Hypercomputer/maxtext) and [MaxDiffusion](https://github.com/AI-Hypercomputer/maxdiffusion); for inference, [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang) (both have first-class TPU backends). Once these are in the wiki — kernels cataloged, sharding strategies indexed, XLA flags noted — the agent has a concrete target to compare against, not just a space of abstract hypotheses.
+
+And the agent can go further than reading code. It can actually **run** the reference model, profile it through the same xprof MCP it uses for your own model, and read its HLO and op-level breakdown side-by-side with yours. From there it can attribute the gap concretely — different attention kernels, different fusion patterns, different sharding or remat strategies, different XLA flags — and turn each gap item into a falsifiable hypothesis on your own model. That short-circuits a large chunk of the search: many "what should I try next?" decisions collapse into "do what the fast reference already does, and measure."
+
+### Your framework's codebase - going even deeper
+
+Optional, but useful: ingest the framework your model is built on. The dominant choice on TPU is [JAX](https://github.com/jax-ml/jax), but PyTorch-on-TPU paths matter too — [PyTorch/XLA](https://github.com/pytorch/xla), [torchax](https://github.com/pytorch/xla/tree/master/torchax), and the [TorchTPU](https://developers.googleblog.com/torchtpu-running-pytorch-natively-on-tpus-at-google-scale/) (coming soon) work. With the framework in the wiki, the agent can resolve crash stacktraces all the way down to the framework internals, reason about *why* a particular dispatch path emitted the HLO it did, and propose fixes that touch the framework boundary rather than just the model code. This is where the deeper bugs and the deeper wins tend to live — not in your model file, but in how your framework lowers it to XLA.
+
+**Bonus** — if your model is in PyTorch, consider asking the LLM to port it to JAX as a stepping stone. The vast majority of public TPU optimization knowledge — kernels, sharding patterns, scaling recipes, reference trainers like MaxText — is JAX-native, so an agent has dramatically more priors to work with on the JAX side, and a PyTorch-only loop can stall on questions where the JAX-side answer is well-known. With the full model repo, the framework source on both sides, and a state-of-the-art JAX reference all in the wiki, porting is largely a mechanical exercise the agent can do on its own. Optimize there, then translate the wins back: a kernel choice becomes a torchax call, a sharding spec becomes a `torch.distributed` plan, a flag becomes an `XLA_FLAGS` line. JAX serves as the optimization playground; your PyTorch codebase remains the destination.
 
 ---
 
-## Why TPU performance optimization is normally painful
+## Putting it all together
 
-A slow training step rarely has one cause. Tracking it down requires following a signal across **five different layers of the stack**:
+Combine these ingredients and you have an agent that knows your model and your codebase intimately, can run and profile the training script end-to-end, can pinpoint bottlenecks from a trace, can attribute every op on the profile back to the HLO that produced it and the line of model code that emitted that HLO, and can step into the framework when the answer lives below your model — all while recording every experiment, every verdict, and every prior it revised along the way.
+
+And critically, this is a **self-learning, self-improving** agent. Every experiment it runs — winners *and* losers — is filed back into the wiki as a permanent piece of context: what was tried, what worked, what didn't, and *why*. The next hypothesis is scored against that growing record, so a refuted experiment in week one shapes the ranked list in week ten; a generalizable lesson extracted from one failed run ("scan-over-layers needs an internally-tiled attention kernel") becomes a prior the agent applies automatically the next time scan comes up. The longer it runs, the smarter it gets — not because the model is updating, but because the wiki is.
 
 ```mermaid
 flowchart LR
-  M[Model code<br/>HF transformers / Flax NNX] --> F[Framework<br/>torchax / JAX jit + sharding + pytree]
-  F --> C[Compiler<br/>XLA HLO, fusion, scheduling, Mosaic custom-calls]
-  C --> P[Profile<br/>xprof timeline, op stats, memory, roofline]
-  P --> H[Hardware<br/>VMEM, ICI, MXU, ridge point]
-  classDef b fill:#fef3c7,stroke:#d97706,color:#78350f
-  class M,F,C,P,H b
+    subgraph IN["What you bring"]
+        direction TB
+        IN1["Your model +<br/>training script"]
+        IN2["Target<br/>hardware"]
+    end
+
+    subgraph ENGINE["Autoresearch loop"]
+        direction TB
+        E1["READS<br/>priors, references"]
+        E2["PROFILES<br/>real runs, HLO"]
+        E3["EXPERIMENTS<br/>edits real code,<br/>runs on real TPU"]
+        E4["LEARNS<br/>distills findings"]
+        E1 --> E2
+        E2 --> E3
+        E3 --> E4
+        E4 --> E1
+    end
+
+    subgraph OUT["What you get back"]
+        direction TB
+        OUT1["Optimized model code<br/>committed to your repo"]
+        OUT2["SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
+        OUT3["Full research trail —<br/>every experiment, win or loss"]
+    end
+
+    WIKI[("LLM Wiki — compounding memory<br/><br/>• Domain knowledge<br/>&nbsp;&nbsp;techniques, kernels, XLA flags, compiler passes<br/><br/>• Your model + framework source<br/>&nbsp;&nbsp;JAX, torchax, PyTorch/XLA<br/><br/>• Reference implementations<br/>&nbsp;&nbsp;MaxText, MaxDiffusion, vLLM, SGLang<br/><br/>• Research trail<br/>&nbsp;&nbsp;every prior experiment, win or loss,<br/>&nbsp;&nbsp;with profile and verdict")]
+
+    IN ==> ENGINE ==> OUT
+
+    WIKI -. "load priors" .-> ENGINE
+    ENGINE -. "file every experiment back" .-> WIKI
+
+    style IN fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#fff
+    style ENGINE fill:#9a3412,stroke:#fb923c,stroke-width:3px,color:#fff
+    style OUT fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#fff
+    style WIKI fill:#1e3a8a,stroke:#93c5fd,stroke-width:3px,color:#fff
 ```
 
-The knowledge to navigate this is spread across ~20 repositories, a dozen papers, XLA flag catalogs, and institutional memory. Ramp-up is weeks. A single optimization experiment — hypothesis → branch → code change → 20-step TPU run → profile analysis → diff → verdict → writeup — takes a senior engineer a full day.
-
-This project is a bet that **an LLM with the right tooling and the right knowledge base can run that loop faster than a human, and keep running it after hours**.
-
----
-
-## The idea: three Karpathy-inspired ingredients, stacked
-
-```mermaid
-flowchart TB
-  subgraph L1[1. Autoresearch loop]
-    A1[Ranked<br/>hypotheses]
-    A2[Experiment<br/>config + run + profile]
-    A3[Observations<br/>per-op deltas, verdict]
-    A1 --> A2 --> A3 --> A1
-  end
-  subgraph L2[2. LLM-maintained wiki]
-    B1[concepts/]
-    B2[codebases/]
-    B3[sources/]
-    B4[models/]
-    B5[experiments/]
-    B6[analyses/]
-  end
-  subgraph L3[3. xprof_mcp profiling brain]
-    C1[xprof traces]
-    C2[HLO dumps]
-    C3[Backtrace: profile op → HLO pass → source line]
-  end
-  L2 -.priors.-> L1
-  L3 -.evidence.-> L1
-  L1 -.learnings.-> L2
-  classDef a fill:#dbeafe,stroke:#1e40af
-  classDef b fill:#d1fae5,stroke:#059669
-  classDef c fill:#fce7f3,stroke:#be185d
-  class L1 a
-  class L2 b
-  class L3 c
-```
-
-### 1. Autoresearch loop — discipline that makes results reproducible
-
-Formalize optimization as a research program. Every candidate optimization enters as a **falsifiable hypothesis** with expected delta and measurement plan. Every experiment ends with a **verdict** tied to a profile and a noise band. Every dead end is documented; every win is traceable to the profile signal that motivated it.
-
-Adapted from the [`autoresearch`](raw/code/autoresearch) reference implementation and specialized to TPU perf in [`SCHEMA.md`](SCHEMA.md). The LLM runs the loop; the human sets targets and arbitrates contradictions.
-
-### 2. Wiki as external memory — the LLM doesn't fit the stack in context
-
-Give the LLM a structured markdown wiki it **maintains itself** as it learns the domain:
-
-| Kind | Count | What it is |
-|---|---:|---|
-| `concepts/` | 96 | MFU, splash attention, rematerialization, ICI roofline, scan-over-layers, … |
-| `codebases/` | 26 | Ingested repos with performance-relevant surfaces annotated — JAX, xprof, torchax, tokamax, 15+ Pallas-kernel libraries, scaling-book, inference engines. |
-| `sources/` | 45 | Papers, xprof docs, scaling-book chapters, tutorials. |
-| `models/` | 1 | Target model with baseline, current best, open hypothesis queue. |
-| `experiments/` | 50+ | Per-run writeups — config, profile, HLO diff, verdict. |
-| `analyses/` | 4 | Synthesis pages — ceiling reports, Pallas-kernel directory, process retrospectives. |
-
-Total **180+ LLM-maintained pages**, cross-linked, indexed, grepped before every write. Index-first-then-edit is a protocol rule — the LLM never invents a link to a page that doesn't exist.
-
-### 3. xprof_mcp — the profiling brain
-
-The leverage point that makes autonomous optimization work. [`xprof_mcp`](raw/code/xprof-mcp) is an MCP server that exposes xprof the way a senior TPU performance engineer uses it:
-
-- `list_runs` / `get_overview` — step-time breakdown, MFU, duty cycle.
-- `get_top_hlo_ops` / `get_op_profile` — ranked hot ops with FLOPs / bytes / roofline classification.
-- `get_memory_profile` — HBM allocation, peak-instant breakdown, fragmentation.
-- `get_hlo_dump_neighborhood` — **fuse a profile op with its surrounding HLO** so the LLM can trace which fusion decision produced it.
-
-Most importantly, it stitches profile data to HLO dumps so the agent can **backtrace a hot op from the profile, through XLA's optimization passes, all the way to the source line that produced it**. Combined with the ingested codebases (§2), that means when a Pallas custom-call shows up in the profile, the LLM can click through to the exact kernel source and reason about its block sizes, layout, and shard_map specs.
-
-Without xprof_mcp, the LLM sees step time and loss. With it, the LLM can ask "why is this op slow" and follow the answer all the way down the stack.
-
----
+Point it at a model, walk away. The loop reads, profiles, experiments, learns — and every cycle through it leaves the wiki smarter than before, so the next cycle starts from a better prior.
 
 ## What this unlocks
 
@@ -132,60 +112,6 @@ Without xprof_mcp, the LLM sees step time and loss. With it, the LLM can ask "wh
 - **Dramatic ramp-up speedup.** An engineer new to TPU perf can browse `concepts/` → `analyses/` → `experiments/` and build a real mental model in hours instead of weeks. The wiki is a curriculum that **writes itself as it's used**.
 - **Generalizable findings, written down.** A recent run discovered that **Pallas custom-calls only beat XLA when XLA wasn't already fusing the pattern** — confirmed twice independently (exp 33 Pallas RMSNorm, exp 47 levanter fused CE, both rejected at the same boundary tax). That insight now lives in [an analysis page](wiki/analyses/2026-04-24-gemma4-jax-ceiling-and-process-retrospective.md) and will guide every future Pallas hypothesis. Writing this down is what turns 50 experiments into leverage for the next 50.
 
----
-
-## The experiment loop, in practice
-
-```mermaid
-sequenceDiagram
-  participant H as Human
-  participant L as LLM agent
-  participant W as Wiki
-  participant T as TPU
-  participant M as xprof_mcp
-  H->>L: "Optimize Gemma 4 on v6e-4; target MFU"
-  L->>W: Read index.md, model page, OBSERVATIONS.md
-  L->>W: Rank open hypotheses by gain × confidence / effort
-  L->>H: "Top hypothesis: splash attention. Approve?"
-  H->>L: go
-  L->>T: Create branch perfautoresearch/...-exp8-splash-attention
-  L->>T: Apply code change, launch 20-step run with profile
-  T->>M: capture trace + HLO dump
-  L->>M: get_overview, get_top_hlo_ops, get_memory_profile
-  L->>L: compare vs baseline, assign verdict
-  L->>W: Write experiment page, append OBSERVATIONS.md block
-  L->>W: Append RESULTS.tsv row, update model page's ranked list
-  L->>H: "exp 8 accepted: +2.7 % TPS, splash's 122 ms custom-call replaces 170 ms of XLA fusion. Next?"
-```
-
-Each experiment's artifacts:
-
-- a git branch (named rollback point)
-- a profile directory under `raw/profiles/` + an xprof browser URL in the writeup
-- a verdict-suffixed markdown page (`…-accepted.md` / `…-rejected.md` / `…-potential.md`)
-- a row in the stack's `RESULTS.tsv` ledger
-- a block appended to `OBSERVATIONS.md`
-
-The full arc is **auditable** — not "the LLM made it faster somehow" but "here is every experiment, every result, every reason, and every line of code that changed".
-
----
-
-## Real findings this project has produced
-
-A partial list of generalizable lessons discovered autonomously during optimization runs — each grounded in specific experiments with profile evidence:
-
-| Finding | Where | Why it matters |
-|---|---|---|
-| **Pallas custom-calls only win when XLA isn't already fusing** | exp 33 (RMSNorm rejected), exp 47 (fused CE rejected) — same mechanism twice | Saves you from building Pallas RMSNorm / SwiGLU / standard CE kernels that XLA already handles well. |
-| **Scan-over-layers requires internally-tiled attention** | exp 51 — scan + XLA SDPA is −60 %, scan + splash is workable | Don't use scan on TPU without flash/splash. XLA SDPA can't share `[B,H,S,S]` score tensors across scan iterations. |
-| **Per-chip batch has a mechanistic sweet spot set by HBM ceiling** | observed on both stacks; past ~85 % HBM, per-token cost worsens | Activations scale linearly with batch; past the ceiling, memory pressure degrades execution. Finding is shape-dependent, mechanism isn't. |
-| **Persistent JAX compile cache: 6.67× wall-clock on repeat** | exp 45 | Trivial infra win; always-on after first experiment of a session. |
-| **Native JAX beats torchax on same hardware by ~3.7 %** | exp 36 vs exp 25 | Torchax's `JittableModule` dispatch + HF-cache-class pytree adds per-op overhead. Quantified. |
-| **The 1.25 GiB `CompileTimeHbmOom` margin on torchax is a scaffold artifact** | torchax exp 10/11/22/23 all failed by same margin; JAX port at same config runs | Flax NNX's leaner pytree closes the gap exactly. |
-
-Every row above links to an experiment page with the raw data and profile.
-
----
 
 ## Repo layout
 
@@ -238,7 +164,15 @@ To run the optimization loop against your own model:
 4. Ask the agent: *"Formulate the top 5 optimization hypotheses for this model on v6e-4, ranked by expected gain × confidence / effort."*
 5. Approve hypotheses; the agent runs them, profiles them, files the results.
 
-The rest is iteration. [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) is the worked example — browse the experiment pages in chronological order to see the loop in action.
+The rest is iteration.
+
+For case study see  [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) is the worked example — browse the experiment pages in chronological order to see the loop in action.
+
+Like autoreserch this repo is not meant to be used as is, but rather should provide a structure and a starting point to automate TPU model optimization on your codebase. 
+
+For sample autoresearch prompt refer to [`wiki/experiments/gemma4_autoresearch_optimization/progam.md`](program.md) in gemma4 experiment.
+
+Optimization process can be done on either Cloud TPU VM (see documentation on how to setup one here: https://docs.cloud.google.com/tpu/docs/create-tpu-vm) or on GKE cluster.
 
 ---
 
