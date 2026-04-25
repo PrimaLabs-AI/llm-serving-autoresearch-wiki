@@ -157,6 +157,8 @@ def main(
     weight_decay: float = 0.0,
     weights_dtype: str = "bf16",  # bf16|fp32 (program target = fp32 long-term)
     use_real_data: bool = True,   # True=wikitext, False=random tokens (perf smoke only)
+    use_splash: bool = False,     # True = override torch.nn.functional.scaled_dot_product_attention
+                                  # with the canonical TPU splash-attention kernel.
     profile_dir: str | None = None,
     profile_step: int = 5,
 ):
@@ -201,6 +203,28 @@ def main(
     # replicated torchax tensors. Without this, `interop.jax_view` crashes
     # on raw torch.Tensors when wrapping the train_step.
     _materialize_buffers_replicated(model, mesh)
+
+    # Splash attention override (canonical pattern from torchtitan example).
+    # HF Llama calls torch.nn.functional.scaled_dot_product_attention from its
+    # SdpaAttention path — overriding the op redirects every layer to the
+    # TPU splash kernel. GQA handled natively by `make_splash_mha`
+    # (num_kv_heads inferred from input shape).
+    if use_splash:
+        import torch.nn.functional as F
+        import splash_attn
+        attn_partition = P("fsdp", "tp", None, None)
+        _splash = jax.jit(functools.partial(
+            splash_attn.tpu_splash_attention, mesh, attn_partition, True))
+        def _custom_attention(query, key, value, attn_mask=None, dropout_p=0.0,
+                              is_causal=False, scale=None, enable_gqa=False):
+            # query/key/value: (batch, num_heads, seq, head_dim) torchax tensors.
+            jq, jk, jv = jax_view((query, key, value))
+            res = _splash(jq, jk, jv, None)
+            return torch_view(res)
+        torchax.default_env().override_op_definition(
+            F.scaled_dot_product_attention, _custom_attention)
+        print("[attn] splash kernel installed (GQA-native, mesh-shard P('fsdp','tp',_,_))",
+              flush=True)
 
     # Tokenizer (only needed if use_real_data).
     tokenizer = AutoTokenizer.from_pretrained(model_id) if use_real_data else None
