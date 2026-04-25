@@ -165,6 +165,12 @@ def main(
                                   # — should reduce compile-time HBM peak vs the outer
                                   # gradient_checkpoint exp 11 used (which collapses to
                                   # one giant scope and XLA schedules everything live).
+    master_dtype: str = "match",  # "match" = mu/nu inherit weights_dtype (default).
+                                  # "fp32" = force mu/nu to fp32 (AMP master state)
+                                  # while weights stay in `weights_dtype`. The
+                                  # standard mixed-precision pattern: fp32 master
+                                  # for the optimizer step, smaller dtype for the
+                                  # forward/backward.
     profile_dir: str | None = None,
     profile_step: int = 5,
 ):
@@ -312,7 +318,17 @@ def main(
             logits.reshape(-1, v), labels.reshape(-1)
         )
 
-    optimizer = optax.adamw(learning_rate=learning_rate, weight_decay=weight_decay)
+    # AMP: optionally force mu/nu to fp32 even when weights are bf16 (the
+    # standard mixed-precision pattern — fp32 master for the optimizer
+    # update, smaller dtype for forward/backward). `nu` follows `mu_dtype`
+    # in optax's scale_by_adam.
+    _master_dtype_jax = (jnp.float32 if master_dtype == "fp32" else None)
+    optimizer = optax.adamw(
+        learning_rate=learning_rate, weight_decay=weight_decay,
+        mu_dtype=_master_dtype_jax,
+    )
+    print(f"[opt] adamw mu/nu_dtype = {master_dtype} "
+          f"(weights_dtype = {weights_dtype})", flush=True)
     # `optimizer.init` produces:
     #  - `mu`/`nu`: `zeros_like(params)` → inherit the per-weight sharding.
     #  - small scalars (`count`, `learning_rate` schedule state): default to
