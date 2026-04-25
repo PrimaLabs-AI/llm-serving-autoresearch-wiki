@@ -1,5 +1,56 @@
 # Log
 
+## [2026-04-25] run-experiment-batch-2 | torchax Llama 3 8B v6e-8 — exp 9-11 (autotune ACCEPTED 36.1% MFU; remat REJECTED)
+
+**Op**: run-experiment (×4: exp 9 + exp 10 + exp 11a/b/c) + protocol-extension (kernel-autotune-first for new shapes).
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp{9..11}-*.md` (4 pages); `raw/profiles/2026-04-25-llama3-8b-exp9-splash-autotuned/` + GCS mirror.
+**Pages updated**: `wiki/index.md` (Experiments 10 → 13; llama3-8b model status → 36.1 % MFU; gap to MaxText 8.5 pp); `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/{splash_attn.py, train.py}` — autotuned `BlockSizes` + remat patch on respective branches.
+**Branches created** (2): `v6e8-llama3-8b-torchax-20260425-{exp9-splash-autotuned-bs4, exp11-remat}`. (exp 10 used the exp 8 image without code change; ran on the exp 9 branch.)
+**Docker images**: `:hf-v3` (autotuned splash) and `:hf-v4` (`+ make_train_step with remat re-enabled`).
+**Key result**:
+- 🏆 **exp 9 ACCEPTED at 36.1 % MFU (7,225 TPS/chip, 57,799 TPS aggregate)** — exp 8's kernel-only autotune (+30 % kernel fwd+bwd) translates to +1.1 % TPS / +0.4 pp MFU end-to-end. Predicted +1.5–3.5 %; landed at low end (~half the kernel-saving converts because exp 3 was already partially overlapping attention with collectives). New program target.
+- exp 10 (kernel autotune at seq=2048/4096/8192): same universal winner pattern. At seq=8192, `block_q=2048 block_kv=1024 fused_bwd=True dkv=(2048,2048)` = 7.944 ms / layer / chip → 254 ms attention budget for a seq=8192 step — feasible if memory fits.
+- **exp 11 REJECTED at all 3 shapes**: 11a (bs=4 seq=1024) is 52 % slower than exp 9 (MFU 24.0 vs 36.1); 11b (bs=4 seq=2048) and 11c (bs=8 seq=1024) **still compile-OOM by 7+ GiB** — only 50 MiB less than exp 4 / 6 (no remat). `nothing_saveable` doesn't fix the OOM-driver, which is *not* activations.
+
+**Discovery**: `torchax.train.make_train_step`'s `remat_policy` arg is **silently ignored** — `loss = interop.gradient_checkpoint(loss, ...)` is commented out in canonical `raw/code/torchax/torchax/train.py:54`. **All baseline + exp 1-10 ran with no remat.** exp 11 re-enables it via local `_make_train_step`. Filing as a torchax upstream issue is queued.
+
+**Process retrofit**: per user direction, established the **kernel-autotune-first protocol for shape changes**: any new training shape gets a 3-min kernel-only autotune (via `tune_splash.py`) before the full training run is submitted. Documented in [exp 10](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp10-splash-autotune-multishape-potential.md).
+
+**Notes / next**: Path to fp32-master + seq=8192 program target requires (a) memory unlock — scan-over-layers (gemma4-jax exp 49-51 confirms the architectural pattern); (b) selective remat (`dots_saveable` instead of `nothing_saveable` — avoid the 52 % step-time tax we measured); (c) tokamax `LinearSoftmaxCrossEntropyLoss` — Llama 3 has no softcap, so the gemma4 jax-exp43 blocker does NOT apply; ~128 MiB / chip activation savings; (d) host-offload of mu/nu — frees ~4 GiB / chip on the way to fp32 master. Ordered by EV: scan first (the unlock), then CE, then remat policy refinement, then fp32.
+
+## [2026-04-25] run-experiment + methodology | torchax Llama 3 8B exp 8 — splash kernel-only autotune (POTENTIAL +30% kernel fwd+bwd at every shape; 3 min wall-clock)
+
+**Op**: run-experiment + methodology-bootstrap (first kernel-only experiment in this wiki).
+**Pages created**:
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp8-splash-kernel-autotune-potential.md` — full writeup.
+- `raw/profiles/2026-04-25-exp8-splash-kernel-autotune/` — `rank0.log`, `rank1.log`, `results.csv` (171 configs × 14 cols, in-tree, 110 KiB).
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/tune_splash.py` — reusable kernel-only autotune harness (~430 LOC, no extra deps beyond what's in the trainer image).
+**Pages updated**:
+- `wiki/index.md` — Experiments 9 → 10; bumped page count; updated llama3 model-status line with the new finding + queued exp 9 validation.
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/README.md` — replaced stale gemma4-copy with llama3-specific contents + linked exp 8 prominently.
+**Branches created**: none (kernel-only experiment; no production code change yet — the validated change happens in exp 9).
+**Docker images**: `us-central1-docker.pkg.dev/tpu-pytorch/test/llama3-8b-torchax-container:tune-v1` (initial; had a clamping bug in the production-default anchor at seq=1024 — `block_q_dkv=2048 > seq_len=1024`); `:tune-v2` (fixed: clamp anchors with `min(global, seq_len)` to mirror production's clamping). Both layered on top of the `hf-v2` trainer image with only the new `tune_splash.py` baked in.
+
+**Key result**: First **kernel-only** experiment in the program. Sweeps splash `BlockSizes × q_layout × use_fused_bwd_kernel` for the 3 in-program shapes (seq=1024 bs=2 baseline; seq=1024 bs=4 exp 3; seq=2048 bs=2 exp 5), single TPU v6e chip, 171 configs total. **Universal winner across all 3 shapes:** `block_q=1024, block_kv=1024, q_layout=HEAD_DIM_MINOR, use_fused_bwd_kernel=True, dkv=(seq_len, seq_len)`, beating the production default in [`splash_attn.py`](experiments/llama3_8B_autoresearch_optimization/torchax/splash_attn.py) by **+30.1 % to +32.4 % on fwd+bwd kernel time**, **+14.9 % to +16.4 % on fwd alone**. Production has `block_kv=512` (asymmetric, stale carryover from an older MaxText recipe) and `use_fused_bwd_kernel=False` — both wrong for these shapes. The autotune-best matches the current MaxText Llama 3.1-8B recipe within 0.2 %, independently confirming that recipe applies cleanly here. End-to-end TPS impact bounded by attention's share of step time: at seq=1024 ≈8 % share ⇒ expected +2.4 % step time ⇒ +2.4 % TPS; at seq=2048 ≈12 % share ⇒ expected +3.5 % TPS. Validation queued as exp 9 (full XPK training run with the autotune-best config).
+
+**Methodological finding (the bigger one)**: end-to-end wall-clock for the 3-shape 171-config sweep was **3 minutes**. The equivalent set of full XPK training runs to test the same hypotheses one-by-one would be ~45-90 min wall-clock (15 min/run × 3-6 representative configs per shape × 3 shapes), and would resolve sub-2 % deltas as noise. Cross-host validation (rank 0 vs rank 1 timed independently on different chips of the same v6e-8 slice) showed **0.04-0.21 % agreement on best-config ms** — measurement noise floor far below the 30 % gain. Pattern to emulate: 1) build focused harness using upstream JAX kernels directly (rather than reusing tokamax + tune_jax — porting risk for direct applicability + 2 extra deps); 2) gate phase 2 on top-k from phase 1 to bound the search; 3) anchor every sweep with the production default + a public reference recipe so deltas are interpretable.
+
+**Decision audit — build vs reuse**:
+- [tokamax `splash_attention_benchmarking.py`](codebases/tokamax.md) — has a working harness with grid + xprof-event-filtered timing via `tune_jax`; rejected because tokamax has a *vendored* fork of splash that may differ from the upstream JAX path our model uses, and `tune_jax` is an extra pip dep. Borrowed the grid layout idea + `randn_init` pattern.
+- [marin/levanter autotune harness](codebases/marin.md) — *in-graph* autotune cache for kernel selection at training time; wrong shape for this task (we want a standalone benchmark). Listed as the index-headline pattern to emulate for *future* in-trainer autotune (TBD when scope warrants).
+- [maxtext splash kernel](codebases/maxtext.md) — has a frozen production splash wrapper but no autotune harness; consulted only for the recipe values used as the second anchor.
+
+**Next hypotheses generated** (queued in the experiment page):
+1. **Exp 9 — full-training validation of the autotune-best splash config** on top of exp 5 (seq=2048 trunk). One-line code change in [`splash_attn.py:42-53`](experiments/llama3_8B_autoresearch_optimization/torchax/splash_attn.py). Highest-priority follow-up. Effort: S.
+2. **Exp 10 — autotune at seq=8192** (program target shape). Same harness, `--seq_len 8192 --batch_size 1`. At seq=8192 attention is ~25 % of step time, so 30 % kernel win ⇒ +7-8 % TPS. Effort: S.
+3. **Exp 11 — combine autotune-best splash + bs=4 / seq=8192** (after exp 9). Test whether `use_fused_bwd_kernel=True` frees activation memory enough to unlock previously-OOM batch/seq combos.
+4. **Phase-3 dq decoupling** — only if any future shape has a competitive `fused_bwd=False` row. In this run every non-fused config was strictly dominated. Defer.
+5. **Promote `tune_splash.py` to a generic Pallas kernel autotune harness** for future kernels (RMSNorm Pallas re-attempt, fused softcap+CE, etc). Captured as a methodology line in the experiment README.
+
+**Notes** — bug found in iteration 1 (image `tune-v1`): the `production_default_full()` config in the harness used the literal `block_q_dkv=2048` value from `splash_attn.py`, but production *clamps* with `min(2048, seq_len)` at runtime. At `seq_len=1024` the harness threw `q_block_size=2048 should divide q_seq_len=1024`. Fix in `tune-v2`: thread `seq_len` into anchor constructors and clamp consistently. **Process retrofit**: when porting production code into a benchmark harness, include the clamp/min logic that ships with the production wrapper, not just the literal constants. Workload `llama3-splash-tune-20260425-191044` (`tune-v2`) succeeded end-to-end in 100 s + image pull/init. The earlier `llama3-splash-tune-20260425-190746` (`tune-v1`) was deleted after seq=1024 sweep failed at the bug above; ~2 min lost.
+
+---
+
 ## [2026-04-25] run-experiment-batch | torchax Llama 3 8B v6e-8 — 7 experiments, splash+bs=4 ACCEPTED (35.7% MFU, +12.8 pp)
 
 **Op**: run-experiment (×7) + formulate-hypothesis (×1) + protocol-update (program.md branch convention).
