@@ -7,6 +7,9 @@ This repository is an experiment in **autonomous TPU model performance optimizat
 
 The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination**. This isn't a replacement for performance engineers — it's a force multiplier. The primary goal is unchanged: a faster model. The engineer stays in charge of direction (picking targets, adjudicating contradictions, deciding which gains are worth keeping); the agent absorbs the legwork (reading code, generating hypotheses, running experiments, profiling, writeup).
 
+[![The wiki graph: every markdown page the agent has built or read, and the cross-links between them. Click for full resolution.](raw/assets/wiki-graph.webp)](raw/assets/wiki-graph-large.png)
+
+
 ## The Core Components
 
 ### 🔁 Autoresearch — specialized to TPU perf
@@ -64,42 +67,42 @@ And critically, this is a **self-learning, self-improving** agent. Every experim
 
 ```mermaid
 flowchart LR
-    subgraph IN["What you bring"]
+    subgraph IN["📥 What you bring"]
         direction TB
-        IN1["Your model +<br/>training script"]
-        IN2["Target<br/>hardware"]
+        IN1["💻 Your model +<br/>training script"]
+        IN2["🖥️ Target<br/>hardware"]
     end
 
-    subgraph ENGINE["Autoresearch loop"]
+    subgraph ENGINE["🔁 Autoresearch loop"]
         direction TB
-        E1["READS<br/>priors, references"]
-        E2["PROFILES<br/>real runs, HLO"]
-        E3["EXPERIMENTS<br/>edits real code,<br/>runs on real TPU"]
-        E4["LEARNS<br/>distills findings"]
+        E1["📖 READS<br/>priors, references"]
+        E2["📊 PROFILES<br/>real runs, HLO"]
+        E3["🧪 EXPERIMENTS<br/>edits real code,<br/>runs on real TPU"]
+        E4["💡 LEARNS<br/>distills findings"]
         E1 --> E2
         E2 --> E3
         E3 --> E4
         E4 --> E1
     end
 
-    subgraph OUT["What you get back"]
+    subgraph OUT["📤 What you get back"]
         direction TB
-        OUT1["Optimized model code<br/>committed to your repo"]
-        OUT2["SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
-        OUT3["Full research trail —<br/>every experiment, win or loss"]
+        OUT1["💻 Optimized model code<br/>committed to your repo"]
+        OUT2["🏆 SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
+        OUT3["📜 Full research trail —<br/>every experiment, win or loss"]
     end
 
-    WIKI[("LLM Wiki — compounding memory<br/><br/>• Domain knowledge<br/>&nbsp;&nbsp;techniques, kernels, XLA flags, compiler passes<br/><br/>• Your model + framework source<br/>&nbsp;&nbsp;JAX, torchax, PyTorch/XLA<br/><br/>• Reference implementations<br/>&nbsp;&nbsp;MaxText, MaxDiffusion, vLLM, SGLang<br/><br/>• Research trail<br/>&nbsp;&nbsp;every prior experiment, win or loss,<br/>&nbsp;&nbsp;with profile and verdict")]
+    WIKI[("🧠 LLM Wiki — compounding memory<br/><br/>• Domain knowledge<br/>&nbsp;&nbsp;techniques, kernels, XLA flags, compiler passes<br/><br/>• Your model + framework source<br/>&nbsp;&nbsp;JAX, torchax, PyTorch/XLA<br/><br/>• Reference implementations<br/>&nbsp;&nbsp;MaxText, MaxDiffusion, vLLM, SGLang<br/><br/>• Research trail<br/>&nbsp;&nbsp;every prior experiment, win or loss,<br/>&nbsp;&nbsp;with profile and verdict")]
 
     IN ==> ENGINE ==> OUT
 
     WIKI -. "load priors" .-> ENGINE
     ENGINE -. "file every experiment back" .-> WIKI
 
-    style IN fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#fff
-    style ENGINE fill:#9a3412,stroke:#fb923c,stroke-width:3px,color:#fff
-    style OUT fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#fff
-    style WIKI fill:#1e3a8a,stroke:#93c5fd,stroke-width:3px,color:#fff
+    style IN fill:#2563eb,stroke:#93c5fd,stroke-width:2px,color:#fff
+    style ENGINE fill:#ea580c,stroke:#fdba74,stroke-width:3px,color:#fff
+    style OUT fill:#16a34a,stroke:#86efac,stroke-width:2px,color:#fff
+    style WIKI fill:#7c3aed,stroke:#c4b5fd,stroke-width:3px,color:#fff
 ```
 
 Point it at a model and act as reviewer — you approve hypotheses, arbitrate contradictions, and audit the trail; the agent does the reading, profiling, experimenting, and learning. Every cycle leaves the wiki smarter than before, so the next cycle starts from a better prior.

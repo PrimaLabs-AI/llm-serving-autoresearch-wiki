@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "19386eebe5f80a23",
+        "id": "99d6780f630d1f92",
         "type": "tabs",
         "children": [
           {
-            "id": "6d6888cdfeb5dd63",
+            "id": "81b05cd2d3f4645c",
             "type": "leaf",
             "state": {
               "type": "graph",
@@ -70,12 +70,12 @@
               "title": "Bookmarks"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "right": {
     "id": "9a659687f45ca86f",
@@ -177,17 +177,18 @@
       "bases:Create new base": false
     }
   },
-  "active": "6d6888cdfeb5dd63",
+  "active": "81b05cd2d3f4645c",
   "lastOpenFiles": [
+    "README.md.tmp.106074.1777088379536",
+    "README.md.tmp.106074.1777088193762",
+    "raw/assets/wiki-graph-large.png",
+    "raw/assets/obsidian_screenshot_large.png",
+    "raw/assets/wiki-graph.jpg",
+    "raw/assets/wiki-graph.webp",
+    "raw/assets/wiki-graph.png",
     "obsidian_screenshot_large.png",
-    "Screenshot 2026-04-24 at 8.18.31 PM.png",
-    "Untitled.base",
-    "Untitled.canvas",
-    "Untitled 1.base",
-    "README.md",
-    "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/2026-04-22-baseline.md",
+    "README.md.tmp.106074.1777087445057",
     "wiki/sources/2026-xprof-mcp-tpu-optimization.md",
-    "wiki/sources/2025-scaling-book-ch9-profiling.md",
     "README.md.tmp.106074.1777085583201",
     "README.md.tmp.106074.1777085577729",
     "README.md.tmp.106074.1777085573701",
@@ -217,14 +218,12 @@
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp37-jax-splash-b3-bf16ce-potential.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp36-jax-splash-batch3-accepted.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp35-jax-splash-potential.md",
+    "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/OBSERVATIONS.md",
+    "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/README.md",
+    "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/README.md",
     "raw/code/aqt/aqt/jax_legacy/jax/imagenet/imagenet.png",
     "raw/code/qwix/docs/source/_static/qwix_logo.png",
     "raw/code/graphcast/docs/tpu_types.png",
-    "raw/code/graphcast/docs/provision_tpu.png",
-    "raw/code/graphcast/docs/project.png",
-    "raw/code/graphcast/docs/local_runtime_url.png",
-    "raw/code/graphcast/docs/local_runtime_popup_2.png",
-    "raw/code/graphcast/docs/local_runtime_popup_1.png",
-    "raw/code/graphcast/docs/GenCast_1p0deg_Mini_ENS_scorecard.png"
+    "raw/code/graphcast/docs/provision_tpu.png"
   ]
 }
