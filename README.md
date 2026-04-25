@@ -67,13 +67,13 @@ And critically, this is a **self-learning, self-improving** agent. Every experim
 
 ```mermaid
 flowchart LR
-    subgraph IN["📥 What you bring"]
+    subgraph IN["<span style='font-size:1.25em'><b>📥 What you bring</b></span>"]
         direction TB
         IN1["💻 Your model +<br/>training script"]
         IN2["🖥️ Target<br/>hardware"]
     end
 
-    subgraph ENGINE["🔁 Autoresearch loop"]
+    subgraph ENGINE["<span style='font-size:1.25em'><b>🔁 Autoresearch loop</b></span>"]
         direction TB
         E1["📖 READS<br/>priors, references"]
         E2["📊 PROFILES<br/>real runs, HLO"]
@@ -85,14 +85,14 @@ flowchart LR
         E4 --> E1
     end
 
-    subgraph OUT["📤 What you get back"]
+    subgraph OUT["<span style='font-size:1.25em'><b>📤 What you get back</b></span>"]
         direction TB
         OUT1["💻 Optimized model code<br/>committed to your repo"]
         OUT2["🏆 SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
         OUT3["📜 Full research trail —<br/>every experiment, win or loss"]
     end
 
-    WIKI[("🧠 LLM Wiki — compounding memory<br/><br/>• Domain knowledge<br/>&nbsp;&nbsp;techniques, kernels, XLA flags, compiler passes<br/><br/>• Your model + framework source<br/>&nbsp;&nbsp;JAX, torchax, PyTorch/XLA<br/><br/>• Reference implementations<br/>&nbsp;&nbsp;MaxText, MaxDiffusion, vLLM, SGLang<br/><br/>• Research trail<br/>&nbsp;&nbsp;every prior experiment, win or loss,<br/>&nbsp;&nbsp;with profile and verdict")]
+    WIKI[("<div style='text-align:center'><span style='font-size:1.25em'><b>🧠 LLM Wiki</b></span></div><div style='text-align:left;white-space:nowrap'>• Domain knowledge<br/>• Your model code<br/>• Framework source<br/>• Reference implementations<br/>• Research trail</div>")]
 
     IN ==> ENGINE ==> OUT
 
