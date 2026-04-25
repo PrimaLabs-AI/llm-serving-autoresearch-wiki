@@ -9,13 +9,13 @@ The claim is structural, not incremental: **given a sufficiently capable LLM, th
 
 ## The Core Components
 
-### Autoresearch, specialized to TPU perf
+### Autoresearch - specialized to TPU perf
 
 **Autoresearch** — introduced in [Karpathy's autoresearch github repo](https://github.com/karpathy/autoresearch) — is a methodology for letting an LLM agent run an open-ended research program: propose ranked hypotheses, run experiments, evaluate outcomes, revise priors, feed what it learned into the next round. The methodology is **domain-agnostic** — any question you can frame as a ranked set of falsifiable experiments with measurable outcomes is a candidate. Karpathy's original target was LLM pretraining *quality* (architectural and optimizer tweaks judged by loss); **this repository specializes the same loop to TPU model *performance*** — wall-clock step time, tokens/sec, MFU, memory budget.
 
 Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierachical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
 
-### Xprof MCP — profiling as a first-class LLM capability
+### Xprof MCP - profiling as a first-class LLM capability
 
 Autoresearch is a feedback loop: hypothesize → experiment → **observe** → revise. Without the *observe* step grounded in real signal, the loop collapses into flag-guessing. For TPU performance optimization, "real signal" means knowing where each millisecond of step time goes, which tensor sits where in HBM, and where every op lands on the roofline. The source of truth is [**XProf**](https://github.com/openxla/xprof), OpenXLA's official TPU profiler — step-time breakdown, per-HLO-op runtime + memory traffic, collective-overlap timing, roofline classification, memory timeline.
 
@@ -23,6 +23,13 @@ Raw XProf is a web UI, not something an LLM agent can use directly. We bridge th
 
 Besides analyzing profiles, it also exposes an API to access **HLO dumps** — produced when the trainer is launched with [`XLA_FLAGS="--xla_dump_to=<dir> --xla_dump_hlo_as_text"`](https://openxla.org/xla/flags_guidance) — which lets the LLM connect profile information back to the [**optimized HLO**](https://openxla.org/xla/architecture#xla_the_tensorflow_compiler_framework) (what XLA actually executes on the TPU, after layout assignment, fusion, scheduling, collective-fusion, and remat passes) and to the [**original HLO**](https://openxla.org/xla/operation_semantics) (the IR the framework — JAX or torchax — emitted before XLA's optimization passes ran). From there the LLM can backtrace the original HLO back to the line of model code that produced it.
 
+### LLM Wiki — collection of domain knowledge on TPU optimization
+
+Out of the box, an LLM's knowledge of TPU performance is thin — it has a rough sense of FLOPs, attention, and general ML training, but not much sense of XLA optimization passes, VMEM budgets, splash attention's block-size knobs, how torchax dispatches through JAX, or the quirks of any particular Pallas kernel. The usual fix for this kind of gap is **RAG** — retrieve snippets from a vector database at query time. That works, but it's probabilistic (you hope the right chunk lands in the top-k), expensive to set up (embedding pipeline, vector store, rank tuning), and hard to audit after the fact.
+
+A lighter alternative, popularized by Karpathy in his [**LLM wiki gist**](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), is to just build a wiki: plain markdown files on disk, with a schema, cross-linked by relative paths, backed by an `index.md` the LLM reads first on every task. Retrieval is `grep` — deterministic, auditable, near-free. No vector DB, no embeddings, no rank tuning. The LLM reads what it needs and writes what it learns, and because markdown is human-readable too, a person can open the wiki at any time and see exactly what the LLM "knows" about the domain.
+
+In this repo the wiki lives under [`wiki/`](wiki/), with [`SCHEMA.md`](SCHEMA.md) as the single source of truth for page types and operating rules. Every page has YAML frontmatter (type, tags, created/updated dates) and a fixed H2 layout per type. **Concept pages** cover a single technique, compiler flag, or hardware feature (MFU, splash attention, rematerialization, ICI roofline, etc.). **Codebase pages** carry annotated *performance-relevant surfaces* tables that point the LLM at exactly the files and line-ranges that matter. **Source pages** summarize ingested papers, docs, and tutorials. **Experiment pages** carry the run's config, linked profile, op-by-op diff, and a verdict. **Analysis pages** synthesize across experiments when a pattern emerges. Everything is cross-linked; [`wiki/index.md`](wiki/index.md) is the navigation root; [`wiki/log.md`](wiki/log.md) is an append-only event log. The **index-first-then-edit** protocol means the LLM grep-checks the index before creating a new link, so broken cross-references don't creep in. Crucially, **the wiki grows as the LLM uses it** — every ingested paper, every new experiment, every generalizable observation becomes a page that makes every later session smarter. The knowledge base is no longer a one-time setup cost; it's a by-product of the research loop itself.
 
 
 ---
