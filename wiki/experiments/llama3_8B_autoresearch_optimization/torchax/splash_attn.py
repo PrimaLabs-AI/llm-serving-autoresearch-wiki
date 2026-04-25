@@ -39,15 +39,20 @@ def tpu_splash_attention(
       decoder_segment_ids, decoder_segment_ids
     )
 
+  # Autotuned config from exp 8 (171-config sweep across 3 shapes).
+  # Universal winner: symmetric block_q == block_kv == 1024,
+  # `dkv` blocks scale with seq_len (capped via the BlockSizes `min(...)`
+  # clamps below), and the fused bwd kernel wins by 7-15 % on every shape.
+  # See wiki/.../torchax/experiments/2026-04-25-exp8-splash-kernel-autotune-potential.md
   global_block_q = 1024
-  global_block_kv = 512
-  global_block_kv_compute = 512
+  global_block_kv = 1024
+  global_block_kv_compute = 1024
   global_block_q_dkv = 2048
-  global_block_kv_dkv = 512
-  global_block_kv_dkv_compute = 512
-  global_block_q_dq = 2048
-  global_block_kv_dq = 512
-  global_use_fused_bwd_kernel = False
+  global_block_kv_dkv = 2048
+  global_block_kv_dkv_compute = 2048
+  global_block_q_dq = None  # fused: must be None
+  global_block_kv_dq = None
+  global_use_fused_bwd_kernel = True
   global_q_layout = "HEAD_DIM_MINOR"
   global_k_layout = "HEAD_DIM_MINOR"
   global_v_layout = "HEAD_DIM_MINOR"
