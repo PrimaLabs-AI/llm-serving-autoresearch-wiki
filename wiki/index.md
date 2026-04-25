@@ -1,5 +1,5 @@
 # TPU Model Performance Auto-optimization — Index
-*Last updated: 2026-04-25 — 184 pages (27 codebases + 45 sources + 96 concepts + 2 model-programs + 4 analyses + 6 analysis subpages + jax-exp47 rejected page + 1 maxtext baseline experiment)*
+*Last updated: 2026-04-25 — 188 pages (27 codebases + 45 sources + 96 concepts + 2 model-programs + 4 analyses + 6 analysis subpages + jax-exp47 rejected page + 2 maxtext baseline experiments + 1 torchax llama3-8b baseline)*
 
 *Methodology: autoresearch (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
@@ -35,12 +35,15 @@ Companion document: [Pallas kernel source survey](analyses/2026-04-23-pallas-ker
 
 ## Models (2)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
-- [Llama 3 8B — TPU autoresearch optimization](experiments/llama3_8B_autoresearch_optimization/README.md) — program page for `meta-llama/Meta-Llama-3-8B` (and Llama 3.1-8B) on TPU v6e via torchax / native-JAX / MaxText. Status: **MaxText reference baseline captured on v6e-8 (409.4 TFLOP/s/device, 44.6 % MFU); torchax + jax baselines pending**. 7 follow-up hypotheses queued in the maxtext baseline page.
+- [Llama 3 8B — TPU autoresearch optimization](experiments/llama3_8B_autoresearch_optimization/README.md) — program page for `meta-llama/Meta-Llama-3-8B` (and Llama 3.1-8B) on TPU v6e via torchax / native-JAX / MaxText. Status: **torchax v6e-8 baseline captured 2026-04-25 (36,729 TPS = 4,591/chip, 22.9 % MFU at bs=2 seq=1024)**; MaxText reference baseline (Llama 3.1-8B) at 409.4 TFLOP/s/device, 44.6 % MFU. 7 perf hypotheses queued (compile-cache fix, splash attention, batch=4, async-collective flags, seq=2048+, scan-over-layers, fp32-master).
 
 ## Hypotheses — ranked, open only (0)
-*None filed as `wiki/hypotheses/*.md` yet — the 7 follow-ups from the 2026-04-25 maxtext baseline are listed inline in that experiment page; convert to standalone hypothesis pages before any of them is selected for an experiment.*
+*None open as standalone pages — the 1 ran-and-refuted hypothesis is filed at [llama3-torchax-xla-recipe-flags](hypotheses/llama3-torchax-xla-recipe-flags.md). The 7 follow-ups from the 2026-04-25 torchax baseline + 7 from the maxtext baseline are listed inline in those experiment pages; convert to standalone hypothesis pages before any of them is selected for an experiment.*
 
-## Experiments (1)
+## Experiments (4)
+- [2026-04-25 torchax-llama3-8b-exp1-xla-recipe-flags](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp1-xla-recipe-flags-rejected.md) — **refuted** — 36,224 TPS (4,528/chip), 22.6 % MFU. MaxText recipe XLA flags applied to torchax: flat ±noise (−1.4 % aggregate, within run-to-run band). Mechanism: at `per-chip B·L = 2,048` (12× less than recipe's 24,576) the FSDP all-gather is already fully hidden behind compute, so collective-overlap flags are no-ops. Compile time +17 s. Pivot → exp 2 (splash attention) to enable larger batch / seq.
+- [2026-04-25 torchax-llama3-8b-baseline (v6e-8)](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-baseline.md) — **supported** — 36,729 TPS (4,591/chip), 22.9 % MFU at `bs=2 seq=1024 fsdp=8`. First end-to-end run of the HF-`transformers`-based Llama 3 8B torchax trainer on multi-host GKE; per-chip throughput is 16 % below local v6e-4 (5,450/chip) — multi-host FSDP collective tax is the first optimization target. 7 follow-up perf hypotheses queued.
+- [2026-04-25 maxtext-gemma4-e4b-v6e8-baseline](experiments/gemma4_autoresearch_optimization/maxtext/experiments/2026-04-25-maxtext-gemma4-e4b-v6e8-baseline.md) — **supported (approximation)** — 282.9 TFLOP/s/device, 10,003 TPS, 30.8 % MFU at `bs=2 seq=8192 fsdp=8`. Authored wiki-local `gemma4-e4b.yml` (no upstream); approximation: missing `num_kv_shared_layers=18` → +47M extra params (~0.6 % vs true E4B).
 - [2026-04-25 maxtext-llama3-1-8b-v6e8-baseline](experiments/llama3_8B_autoresearch_optimization/maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) — **supported** — 409.4 TFLOP/s/device, 7,069.7 TPS, 44.6 % MFU; reproduces tpu-recipes-v0.1.4 README within −1.0 %.
 
 ## Sources (45)
