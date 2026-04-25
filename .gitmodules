@@ -76,3 +76,6 @@
 [submodule "raw/code/aqt"]
 	path = raw/code/aqt
 	url = https://github.com/google/aqt
+[submodule "raw/code/tpu-recipes"]
+	path = raw/code/tpu-recipes
+	url = https://github.com/AI-Hypercomputer/tpu-recipes.git
