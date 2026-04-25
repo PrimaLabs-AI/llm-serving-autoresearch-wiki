@@ -5,17 +5,17 @@
 
 This repository is an experiment in **autonomous TPU model performance optimization**, end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself.
 
-The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination** .
+The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination**. This isn't a replacement for performance engineers — it's a force multiplier. The primary goal is unchanged: a faster model. The engineer stays in charge of direction (picking targets, adjudicating contradictions, deciding which gains are worth keeping); the agent absorbs the legwork (reading code, generating hypotheses, running experiments, profiling, writeup).
 
 ## The Core Components
 
-### Autoresearch - specialized to TPU perf
+### Autoresearch — specialized to TPU perf
 
 **Autoresearch** — introduced in [Karpathy's autoresearch github repo](https://github.com/karpathy/autoresearch) — is a methodology for letting an LLM agent run an open-ended research program: propose ranked hypotheses, run experiments, evaluate outcomes, revise priors, feed what it learned into the next round. The methodology is **domain-agnostic** — any question you can frame as a ranked set of falsifiable experiments with measurable outcomes is a candidate. Karpathy's original target was LLM pretraining *quality* (architectural and optimizer tweaks judged by loss); **this repository specializes the same loop to TPU model *performance*** — wall-clock step time, tokens/sec, MFU, memory budget.
 
-Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierachical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
+Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierarchical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
 
-### Xprof MCP - profiling as a first-class LLM capability
+### Xprof MCP — profiling as a first-class LLM capability
 
 Autoresearch is a feedback loop: hypothesize → experiment → **observe** → revise. Without the *observe* step grounded in real signal, the loop collapses into flag-guessing. For TPU performance optimization, "real signal" means knowing where each millisecond of step time goes, which tensor sits where in HBM, and where every op lands on the roofline. The source of truth is [**XProf**](https://github.com/openxla/xprof), OpenXLA's official TPU profiler — step-time breakdown, per-HLO-op runtime + memory traffic, collective-overlap timing, roofline classification, memory timeline.
 
@@ -34,13 +34,13 @@ In practice, using an LLM wiki is straightforward: you point the agent at a sour
 **Bonus**: because the wiki is plain markdown with relative links, you can point [**Obsidian**](https://obsidian.md/) — a free, local-first markdown knowledge-base editor — at the wiki directory and immediately get a navigable graph view, backlinks, full-text search, and tag filtering on top of exactly the same files the LLM is reading and writing. Same source of truth, two readers: the agent uses `grep` and direct file I/O, you get a visual UI for browsing what the agent has learned, spot-checking its writeups, or manually exploring the experiment tree.
 
 
-### Your model codebase - what LLM can actually change and optimize
+### Your model codebase — what LLM can actually change and optimize
 
 The model code you want to optimize rarely exists in isolation — it lives inside a larger training framework your team owns or forks, like [TorchTitan](https://github.com/pytorch/torchtitan). The wiki structure adapts naturally: add the framework as a git submodule under `raw/code/<slug>`, pin the commit you ingested, and let the agent edit it in place on per-experiment branches. Each experiment is a real diff on a real branch — auditable, revertable, and tied back to the experiment page that produced it, the profile that justified it, and the verdict that accepted or rejected it.
 
 This is the part that distinguishes this setup from "LLM as smart reader." The agent gets **write access** to the model code, not just read access. It can swap an attention kernel, tune a batch size, restructure remat, flip an XLA flag, and then measure whether it actually helped — all under the autoresearch protocol that makes the change reviewable. There are multiple ways to wire this up (submodule, sibling clone, monorepo subdir), and no single right way — pick the one that matches how your team already version-controls the model.
 
-### State of the art repos - optimization reference
+### State of the art repos — optimization reference
 
 The setup so far is enough for the agent to optimize your model on its own — but you can shortcut a lot of the search by handing it a working reference for what "fast on TPU" actually looks like. Ingest a state-of-the-art TPU codebase alongside your own and the optimization question changes shape: instead of *"explore the space of possible optimizations,"* it becomes *"figure out why this reference model is fast, why mine is slow, and close the gap."* That's a much narrower, much more tractable search.
 
@@ -48,7 +48,7 @@ Concrete references worth ingesting: for TPU training, [MaxText](https://github.
 
 And the agent can go further than reading code. It can actually **run** the reference model, profile it through the same xprof MCP it uses for your own model, and read its HLO and op-level breakdown side-by-side with yours. From there it can attribute the gap concretely — different attention kernels, different fusion patterns, different sharding or remat strategies, different XLA flags — and turn each gap item into a falsifiable hypothesis on your own model. That short-circuits a large chunk of the search: many "what should I try next?" decisions collapse into "do what the fast reference already does, and measure."
 
-### Your framework's codebase - going even deeper
+### Your framework's codebase — going even deeper
 
 Optional, but useful: ingest the framework your model is built on. The dominant choice on TPU is [JAX](https://github.com/jax-ml/jax), but PyTorch-on-TPU paths matter too — [PyTorch/XLA](https://github.com/pytorch/xla), [torchax](https://github.com/pytorch/xla/tree/master/torchax), and the [TorchTPU](https://developers.googleblog.com/torchtpu-running-pytorch-natively-on-tpus-at-google-scale/) (coming soon) work. With the framework in the wiki, the agent can resolve crash stacktraces all the way down to the framework internals, reason about *why* a particular dispatch path emitted the HLO it did, and propose fixes that touch the framework boundary rather than just the model code. This is where the deeper bugs and the deeper wins tend to live — not in your model file, but in how your framework lowers it to XLA.
 
@@ -102,7 +102,7 @@ flowchart LR
     style WIKI fill:#1e3a8a,stroke:#93c5fd,stroke-width:3px,color:#fff
 ```
 
-Point it at a model, walk away. The loop reads, profiles, experiments, learns — and every cycle through it leaves the wiki smarter than before, so the next cycle starts from a better prior.
+Point it at a model and act as reviewer — you approve hypotheses, arbitrate contradictions, and audit the trail; the agent does the reading, profiling, experimenting, and learning. Every cycle leaves the wiki smarter than before, so the next cycle starts from a better prior.
 
 ## What this unlocks
 
@@ -141,7 +141,7 @@ raw/                immutable inputs — never modified.
 
 ## Get started
 
-Clone with submodules (the `raw/code/` dir pulls ~26 codebases totalling ~GB; use `--depth` if that matters to you):
+Clone with submodules (the `raw/code/` dir pulls ~26 codebases totalling a few GB; use `--depth` if that matters to you):
 
 ```bash
 git clone --recurse-submodules https://github.com/vlasenkoalexey/tpu_performance_autoresearch_wiki
@@ -162,17 +162,15 @@ To run the optimization loop against your own model:
 2. Ask the agent to ingest it: *"Ingest raw/code/<slug> as a codebase page, highlighting performance-relevant surfaces."*
 3. Create a model page under `wiki/models/<slug>.md` with baseline metrics and a hardware target.
 4. Ask the agent: *"Formulate the top 5 optimization hypotheses for this model on v6e-4, ranked by expected gain × confidence / effort."*
-5. Approve hypotheses; the agent runs them, profiles them, files the results.
+5. Approve the hypotheses you want; the agent runs each, profiles it, and files the result before proposing the next round.
 
 The rest is iteration.
 
-For case study see  [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) is the worked example — browse the experiment pages in chronological order to see the loop in action.
+For a worked case study, see [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) — browse the experiment pages in chronological order to see the loop in action. For a sample autoresearch prompt, see [`program.md`](wiki/experiments/gemma4_autoresearch_optimization/program.md) in that same directory.
 
-Like autoreserch this repo is not meant to be used as is, but rather should provide a structure and a starting point to automate TPU model optimization on your codebase. 
+Like autoresearch itself, this repo isn't meant to be used as-is — it provides a structure and starting point you adapt to your own model and codebase.
 
-For sample autoresearch prompt refer to [`wiki/experiments/gemma4_autoresearch_optimization/progam.md`](program.md) in gemma4 experiment.
-
-Optimization process can be done on either Cloud TPU VM (see documentation on how to setup one here: https://docs.cloud.google.com/tpu/docs/create-tpu-vm) or on GKE cluster.
+The optimization loop runs on either a [Cloud TPU VM](https://cloud.google.com/tpu/docs/create-tpu-vm) or a [GKE TPU cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus). If you're reading this, the assumption is that you're already familiar with those.
 
 ---
 
