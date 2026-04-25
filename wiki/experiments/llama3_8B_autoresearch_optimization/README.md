@@ -43,7 +43,7 @@ Individual experiments for this program live as dated files in **this folder**: 
 
 ## How to run
 
-Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary). The runbook below reproduces the [2026-04-25 baseline](torchax/experiments/2026-04-25-baseline.md).
+Scripts live in [`torchax/`](torchax/README.md) (primary, where optimizations are explored), [`jax/`](jax/README.md) (secondary, native-JAX port), and [`maxtext/`](maxtext/README.md) (reference baseline — runs upstream MaxText recipes verbatim as a measured ceiling for the other two stacks to target). The runbook below reproduces the torchax [2026-04-25 baseline](torchax/experiments/2026-04-25-baseline.md). For the current MaxText reference number on v6e-8 see [maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md](maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) (**409.4 TFLOP/s/device, 7,069.7 TPS, 44.6 % MFU**).
 
 ### Prerequisites
 

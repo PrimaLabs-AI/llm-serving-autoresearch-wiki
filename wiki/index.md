@@ -1,5 +1,5 @@
 # TPU Model Performance Auto-optimization — Index
-*Last updated: 2026-04-25 — 180 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 4 analyses + 6 analysis subpages + jax-exp47 rejected page)*
+*Last updated: 2026-04-25 — 184 pages (27 codebases + 45 sources + 96 concepts + 2 model-programs + 4 analyses + 6 analysis subpages + jax-exp47 rejected page + 1 maxtext baseline experiment)*
 
 *Methodology: autoresearch (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
@@ -33,14 +33,15 @@ Companion document: [Pallas kernel source survey](analyses/2026-04-23-pallas-ker
 
 ---
 
-## Models (1)
+## Models (2)
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
+- [Llama 3 8B — TPU autoresearch optimization](experiments/llama3_8B_autoresearch_optimization/README.md) — program page for `meta-llama/Meta-Llama-3-8B` (and Llama 3.1-8B) on TPU v6e via torchax / native-JAX / MaxText. Status: **MaxText reference baseline captured on v6e-8 (409.4 TFLOP/s/device, 44.6 % MFU); torchax + jax baselines pending**. 7 follow-up hypotheses queued in the maxtext baseline page.
 
 ## Hypotheses — ranked, open only (0)
-*None yet.*
+*None filed as `wiki/hypotheses/*.md` yet — the 7 follow-ups from the 2026-04-25 maxtext baseline are listed inline in that experiment page; convert to standalone hypothesis pages before any of them is selected for an experiment.*
 
-## Experiments (0)
-*None yet.*
+## Experiments (1)
+- [2026-04-25 maxtext-llama3-1-8b-v6e8-baseline](experiments/llama3_8B_autoresearch_optimization/maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) — **supported** — 409.4 TFLOP/s/device, 7,069.7 TPS, 44.6 % MFU; reproduces tpu-recipes-v0.1.4 README within −1.0 %.
 
 ## Sources (45)
 
