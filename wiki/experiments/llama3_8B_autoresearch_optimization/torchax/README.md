@@ -17,8 +17,6 @@ Companion folder: [`../jax/`](../jax/README.md) — native-JAX port (secondary, 
 torchax/
   README.md              this file
   train.py               Llama 3 8B E4B fine-tune trainer (UNTESTED scaffold)
-  run.sh                 wrapper that sets XLA_FLAGS + LIBTPU_INIT_ARGS and
-                         hands `--profile_dir` / `--profile_steps` to train.py
   config.yaml            default args for train.py (CLI overrides)
   requirements.txt       pip install targets (jax[tpu], transformers @ main, ...)
   data.py                wikitext loader + fixed-length packer
@@ -62,8 +60,11 @@ WIKI_ROOT="/mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki"
 PROFILE_DIR="$WIKI_ROOT/raw/profiles/2026-04-25-llama3-baseline"
 mkdir -p "$PROFILE_DIR"
 
-cd "$WIKI_ROOT/wiki/experiments/llama3_autoresearch_optimization/torchax"
-python -m train \
+export HF_HOME="/mnt/disks/persist/torch-tpu/.cache/huggingface"
+mkdir -p "$HF_HOME"
+
+cd "$WIKI_ROOT/wiki/experiments/llama3_8B_autoresearch_optimization/torchax"
+python -u -m train \
   --steps 10 \
   --batch_size 1 \
   --seq_len 1024 \
@@ -71,9 +72,7 @@ python -m train \
   --profile_steps 5 6 7
 ```
 
-Reproduces the [2026-04-25 baseline](../2026-04-25-baseline.md) at seq=1024 (clean loss; seq=2048 currently hits NaN — see the baseline page).
-
-The `run.sh` wrapper sets `XLA_FLAGS` + `LIBTPU_INIT_ARGS` and forwards extra args, but currently assumes a v6e-8 layout; prefer the explicit invocation above until `run.sh` is refreshed.
+The `-u` flag is important — it disables Python output buffering, so the `[load]` / `[shard]` / `[step]` log lines stream live instead of arriving in chunks. Reproduces the [2026-04-25 baseline](../2026-04-25-baseline.md) at seq=1024 (clean loss; seq=2048 currently hits NaN — see the baseline page).
 
 ### Flags
 
