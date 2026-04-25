@@ -49,7 +49,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "",
+                "query": "optimization",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -70,7 +70,8 @@
               "title": "Bookmarks"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "horizontal",
@@ -176,19 +177,20 @@
       "bases:Create new base": false
     }
   },
-  "active": "81b05cd2d3f4645c",
+  "active": "cdb6701e25fd48ef",
   "lastOpenFiles": [
+    "README.md.tmp.106074.1777085583201",
+    "README.md.tmp.106074.1777085577729",
+    "README.md.tmp.106074.1777085573701",
+    "README.md.tmp.106074.1777085568909",
+    "README.md.tmp.106074.1777085564575",
+    "README.md.tmp.106074.1777085560519",
+    "wiki/concepts/pallas-kernel.md",
     "README.md.tmp.106074.1777085071890",
     "README.md.tmp.106074.1777084921665",
     "README.md.tmp.106074.1777084741431",
     "README.md.tmp.106074.1777084727434",
     "README.md.tmp.106074.1777084721488",
-    "README.md.tmp.106074.1777084715982",
-    "README.md.tmp.106074.1777084711727",
-    "README.md.tmp.106074.1777084707726",
-    "README.md.tmp.106074.1777084703470",
-    "README.md.tmp.106074.1777084698831",
-    "README.md.tmp.106074.1777084610889",
     "wiki/analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-24-exp52-jax-fp32master-seq2k-accepted.md",
@@ -213,7 +215,6 @@
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/README.md",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/README.md",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/OBSERVATIONS.md",
-    "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-23-exp34-jax-baseline-accepted.md",
     "raw/code/aqt/aqt/jax_legacy/jax/imagenet/imagenet.png",
     "raw/code/qwix/docs/source/_static/qwix_logo.png",
     "raw/code/graphcast/docs/tpu_types.png",

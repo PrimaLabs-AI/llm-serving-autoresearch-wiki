@@ -9,13 +9,13 @@ The claim is structural, not incremental: **given a sufficiently capable LLM, th
 
 ## The Core Components
 
-### Autoresearch — specialized to TPU perf
+### 🔁 Autoresearch — specialized to TPU perf
 
 **Autoresearch** — introduced in [Karpathy's autoresearch github repo](https://github.com/karpathy/autoresearch) — is a methodology for letting an LLM agent run an open-ended research program: propose ranked hypotheses, run experiments, evaluate outcomes, revise priors, feed what it learned into the next round. The methodology is **domain-agnostic** — any question you can frame as a ranked set of falsifiable experiments with measurable outcomes is a candidate. Karpathy's original target was LLM pretraining *quality* (architectural and optimizer tweaks judged by loss); **this repository specializes the same loop to TPU model *performance*** — wall-clock step time, tokens/sec, MFU, memory budget.
 
 Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierarchical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
 
-### Xprof MCP — profiling as a first-class LLM capability
+### 📊 Xprof MCP — profiling as a first-class LLM capability
 
 Autoresearch is a feedback loop: hypothesize → experiment → **observe** → revise. Without the *observe* step grounded in real signal, the loop collapses into flag-guessing. For TPU performance optimization, "real signal" means knowing where each millisecond of step time goes, which tensor sits where in HBM, and where every op lands on the roofline. The source of truth is [**XProf**](https://github.com/openxla/xprof), OpenXLA's official TPU profiler — step-time breakdown, per-HLO-op runtime + memory traffic, collective-overlap timing, roofline classification, memory timeline.
 
@@ -23,7 +23,7 @@ Raw XProf is a web UI, not something an LLM agent can use directly. We bridge th
 
 Besides analyzing profiles, it also exposes an API to access **HLO dumps** — produced when the trainer is launched with [`XLA_FLAGS="--xla_dump_to=<dir> --xla_dump_hlo_as_text"`](https://openxla.org/xla/flags_guidance) — which lets the LLM connect profile information back to the [**optimized HLO**](https://openxla.org/xla/architecture#xla_the_tensorflow_compiler_framework) (what XLA actually executes on the TPU, after layout assignment, fusion, scheduling, collective-fusion, and remat passes) and to the [**original HLO**](https://openxla.org/xla/operation_semantics) (the IR the framework — JAX or torchax — emitted before XLA's optimization passes ran). From there the LLM can backtrace the original HLO back to the line of model code that produced it.
 
-### LLM Wiki — collection of domain knowledge on TPU optimization
+### 🧠 LLM Wiki — collection of domain knowledge on TPU optimization
 
 Out of the box, an LLM's knowledge of TPU performance is thin — it has a rough sense of FLOPs, attention, and general ML training, but not much sense of XLA optimization passes, VMEM budgets, splash attention's block-size knobs, how torchax dispatches through JAX, or the quirks of any particular Pallas kernel. The usual fix for this kind of gap is **RAG** — retrieve snippets from a vector database at query time. That works, but it's probabilistic (you hope the right chunk lands in the top-k), expensive to set up (embedding pipeline, vector store, rank tuning), and hard to audit after the fact.
 
@@ -34,13 +34,13 @@ In practice, using an LLM wiki is straightforward: you point the agent at a sour
 **Bonus**: because the wiki is plain markdown with relative links, you can point [**Obsidian**](https://obsidian.md/) — a free, local-first markdown knowledge-base editor — at the wiki directory and immediately get a navigable graph view, backlinks, full-text search, and tag filtering on top of exactly the same files the LLM is reading and writing. Same source of truth, two readers: the agent uses `grep` and direct file I/O, you get a visual UI for browsing what the agent has learned, spot-checking its writeups, or manually exploring the experiment tree.
 
 
-### Your model codebase — what LLM can actually change and optimize
+### 💻 Your model codebase — what LLM can actually change and optimize
 
 The model code you want to optimize rarely exists in isolation — it lives inside a larger training framework your team owns or forks, like [TorchTitan](https://github.com/pytorch/torchtitan). The wiki structure adapts naturally: add the framework as a git submodule under `raw/code/<slug>`, pin the commit you ingested, and let the agent edit it in place on per-experiment branches. Each experiment is a real diff on a real branch — auditable, revertable, and tied back to the experiment page that produced it, the profile that justified it, and the verdict that accepted or rejected it.
 
 This is the part that distinguishes this setup from "LLM as smart reader." The agent gets **write access** to the model code, not just read access. It can swap an attention kernel, tune a batch size, restructure remat, flip an XLA flag, and then measure whether it actually helped — all under the autoresearch protocol that makes the change reviewable. There are multiple ways to wire this up (submodule, sibling clone, monorepo subdir), and no single right way — pick the one that matches how your team already version-controls the model.
 
-### State of the art repos — optimization reference
+### 🏆 State of the art repos — optimization reference
 
 The setup so far is enough for the agent to optimize your model on its own — but you can shortcut a lot of the search by handing it a working reference for what "fast on TPU" actually looks like. Ingest a state-of-the-art TPU codebase alongside your own and the optimization question changes shape: instead of *"explore the space of possible optimizations,"* it becomes *"figure out why this reference model is fast, why mine is slow, and close the gap."* That's a much narrower, much more tractable search.
 
@@ -48,7 +48,7 @@ Concrete references worth ingesting: for TPU training, [MaxText](https://github.
 
 And the agent can go further than reading code. It can actually **run** the reference model, profile it through the same xprof MCP it uses for your own model, and read its HLO and op-level breakdown side-by-side with yours. From there it can attribute the gap concretely — different attention kernels, different fusion patterns, different sharding or remat strategies, different XLA flags — and turn each gap item into a falsifiable hypothesis on your own model. That short-circuits a large chunk of the search: many "what should I try next?" decisions collapse into "do what the fast reference already does, and measure."
 
-### Your framework's codebase — going even deeper
+### ⚙️ Your framework's codebase — going even deeper
 
 Optional, but useful: ingest the framework your model is built on. The dominant choice on TPU is [JAX](https://github.com/jax-ml/jax), but PyTorch-on-TPU paths matter too — [PyTorch/XLA](https://github.com/pytorch/xla), [torchax](https://github.com/pytorch/xla/tree/master/torchax), and the [TorchTPU](https://developers.googleblog.com/torchtpu-running-pytorch-natively-on-tpus-at-google-scale/) (coming soon) work. With the framework in the wiki, the agent can resolve crash stacktraces all the way down to the framework internals, reason about *why* a particular dispatch path emitted the HLO it did, and propose fixes that touch the framework boundary rather than just the model code. This is where the deeper bugs and the deeper wins tend to live — not in your model file, but in how your framework lowers it to XLA.
 
