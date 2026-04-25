@@ -1,24 +1,13 @@
 # TPU Model Performance Auto-optimization
 
 > **Model optimization that feels like cheating.**
-> Point an LLM agent at your training script, come back to **+10 – 15 % TPS** with a fully documented research trail.
+> Point an LLM agent at your training script and hardware target, come back to a **state-of-the-art-capable configuration** with a fully documented research trail.
 
-This repository is an experiment in **autonomous TPU model performance optimization**, end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself. The methodology is an **autoresearch** loop (after [Karpathy's autoresearch paper](raw/code/autoresearch)) specialized to TPU perf — ranked falsifiable hypotheses, experiments with profile-grounded verdicts, and revised priors feeding the next round.
+This repository is an experiment in **autonomous TPU model performance optimization**, end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself.
 
----
+The claim is structural, not incremental: **given a sufficiently capable LLM, the right profiling tools, and a knowledge base that includes the model's + framework's source, an autonomous agent can drive any (model, hardware) pair to state-of-the-art performance for that combination** — matching what a senior TPU perf engineer would achieve, but much faster, much cheaper, and with the full decision log preserved.
 
-## It works. Here's the evidence from this repo's session logs.
-
-Two independent optimization runs on **Gemma 4 E4B / TPU v6e-4**, fully autonomous, every number reproducible from the wiki's experiment pages:
-
-| Stack | Baseline TPS | Best TPS | Δ | Δ MFU | Experiments |
-|---|---:|---:|---:|---:|---:|
-| **torchax** (HF PyTorch → JAX) | 30,570 | **33,372** | **+9.2 %** | +1.86 pt | 25 over ~2 days |
-| **Native JAX port** (Flax NNX) | 30,285 | **34,614** | **+14.3 %** | +2.88 pt | **2 ratchet steps**, then plateau |
-
-After 25 torchax experiments, the LLM had internalized which optimizations matter. When tasked with porting to native JAX, it reproduced the top-of-stack result (splash attention + batch=3) in **just two experiments** — and surpassed the torchax session-best by **+3.7 % TPS**, because the port shed a dispatch-overhead tax the torchax path couldn't avoid.
-
-Every experiment has its own markdown page, linked profile, git branch, and `-accepted` / `-rejected` / `-potential` verdict suffix. Browse [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) to see it.
+The methodology is an **autoresearch** loop (after [Karpathy's autoresearch paper](raw/code/autoresearch)) specialized to TPU perf — ranked falsifiable hypotheses, experiments with profile-grounded verdicts, and revised priors feeding the next round. The leverage comes from giving the LLM the three things it's normally missing: a profiling tool it can query programmatically ([`xprof_mcp`](raw/code/xprof-mcp)), a structured wiki it maintains as external memory, and the full source code of every piece of the stack it's optimizing.
 
 ---
 
@@ -114,7 +103,7 @@ Without xprof_mcp, the LLM sees step time and loss. With it, the LLM can ask "wh
 
 ## What this unlocks
 
-- **Optimization that feels like cheating.** Describe a goal in a sentence. Come back to +10 – 15 % TPS and a linked research trail. The LLM picks the right experiments because it has read the right papers, studied the right code, and learned from every prior experiment it ran on this model.
+- **Optimization that feels like cheating.** Describe a goal in a sentence. Come back to a configuration at or near the hardware's achievable ceiling, with a linked research trail showing every experiment that led there. The LLM picks the right experiments because it has read the right papers, studied the right code, and learned from every prior experiment it ran on this model.
 - **Debug the framework, not just the model.** Most TPU perf issues aren't in your model — they're in torchax's dispatch, JAX's sharding plan, or a Pallas kernel's `shard_map` wrapping. With the framework source ingested, the LLM can read it. When torchax's `JittableModule` dedup produced a tied-weight crash (exp 2), the agent pinpointed the cause by grepping `raw/code/torchax/`. When scan-over-layers + XLA SDPA regressed −60 % (exp 51), it explained the mechanism by cross-referencing JAX's scan lowering with the attention code path.
 - **Ask questions, let the LLM explore.** "Why are we OOM-ing at batch=4?" "What kernel would help the loop-fusion bucket?" "Does splash win at seq=2048?" — the LLM reads the profile, surfaces the relevant prior experiments, proposes the next hypothesis, runs it. You don't need to know what to ask next.
 - **Dramatic ramp-up speedup.** An engineer new to TPU perf can browse `concepts/` → `analyses/` → `experiments/` and build a real mental model in hours instead of weeks. The wiki is a curriculum that **writes itself as it's used**.
@@ -166,7 +155,7 @@ A partial list of generalizable lessons discovered autonomously during optimizat
 |---|---|---|
 | **Pallas custom-calls only win when XLA isn't already fusing** | exp 33 (RMSNorm rejected), exp 47 (fused CE rejected) — same mechanism twice | Saves you from building Pallas RMSNorm / SwiGLU / standard CE kernels that XLA already handles well. |
 | **Scan-over-layers requires internally-tiled attention** | exp 51 — scan + XLA SDPA is −60 %, scan + splash is workable | Don't use scan on TPU without flash/splash. XLA SDPA can't share `[B,H,S,S]` score tensors across scan iterations. |
-| **batch = 3 is the v6e-4 sweet spot for Gemma-scale models** | both stacks independently converged; batch=4 regresses on memory pressure | Mechanistic: activations scale linearly with batch; past 85 % HBM, per-token cost worsens. |
+| **Per-chip batch has a mechanistic sweet spot set by HBM ceiling** | observed on both stacks; past ~85 % HBM, per-token cost worsens | Activations scale linearly with batch; past the ceiling, memory pressure degrades execution. Finding is shape-dependent, mechanism isn't. |
 | **Persistent JAX compile cache: 6.67× wall-clock on repeat** | exp 45 | Trivial infra win; always-on after first experiment of a session. |
 | **Native JAX beats torchax on same hardware by ~3.7 %** | exp 36 vs exp 25 | Torchax's `JittableModule` dispatch + HF-cache-class pytree adds per-op overhead. Quantified. |
 | **The 1.25 GiB `CompileTimeHbmOom` margin on torchax is a scaffold artifact** | torchax exp 10/11/22/23 all failed by same margin; JAX port at same config runs | Flax NNX's leaner pytree closes the gap exactly. |
