@@ -1,4 +1,4 @@
-# TPU Model Performance Auto-optimization
+# 🤖 TPU Model Performance Auto-optimization
 
 > **Model optimization that feels like cheating.**
 > Point an LLM agent at your training script and hardware target, come back to a **state-of-the-art-capable configuration** with a fully documented research trail.

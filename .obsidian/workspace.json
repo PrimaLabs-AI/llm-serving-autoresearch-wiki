@@ -49,7 +49,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "optimization",
+                "query": "",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -177,8 +177,10 @@
       "bases:Create new base": false
     }
   },
-  "active": "cdb6701e25fd48ef",
+  "active": "81b05cd2d3f4645c",
   "lastOpenFiles": [
+    "README.md.tmp.106074.1777087445057",
+    "wiki/sources/2026-xprof-mcp-tpu-optimization.md",
     "README.md.tmp.106074.1777085583201",
     "README.md.tmp.106074.1777085577729",
     "README.md.tmp.106074.1777085573701",
@@ -190,7 +192,6 @@
     "README.md.tmp.106074.1777084921665",
     "README.md.tmp.106074.1777084741431",
     "README.md.tmp.106074.1777084727434",
-    "README.md.tmp.106074.1777084721488",
     "wiki/analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/2026-04-24-exp52-jax-fp32master-seq2k-accepted.md",
@@ -214,7 +215,6 @@
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/OBSERVATIONS.md",
     "wiki/experiments/gemma4_autoresearch_optimization/jax/experiments/README.md",
     "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/README.md",
-    "wiki/experiments/gemma4_autoresearch_optimization/torchax/experiments/OBSERVATIONS.md",
     "raw/code/aqt/aqt/jax_legacy/jax/imagenet/imagenet.png",
     "raw/code/qwix/docs/source/_static/qwix_logo.png",
     "raw/code/graphcast/docs/tpu_types.png",
