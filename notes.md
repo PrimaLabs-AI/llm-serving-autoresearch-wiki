@@ -11,6 +11,7 @@ using git submodule add https://github.com/jax-ml/scaling-book under raw/code, u
 using git submodule add https://github.com/karpathy/autoresearch  under raw/code, update readme
 using git submodule add https://github.com/linhkid/pallas-forge under raw/code, update readme
 using git submodule add https://github.com/jax-ml/jax under raw/code, update readme. 
+using git submodule add https://github.com/AI-Hypercomputer/tpu-recipes/tree/main raw/code, update readme. 
 
 
 Injest https://huggingface.co/spaces/nanotron/ultrascale-playbook, save pictures references on the page

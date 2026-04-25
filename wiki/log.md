@@ -1,5 +1,14 @@
 # Log
 
+## [2026-04-25] ingest-codebase | tpu-recipes (AI-Hypercomputer/tpu-recipes @ e284e361)
+
+**Op**: ingest-codebase.
+**Pages created**: `wiki/codebases/tpu-recipes.md`.
+**Pages updated**: `wiki/index.md` (Codebases count 26→27; new entry under Wave 4 ecosystem); `README.md` (new bullet under "Reference trainers & inference engines"); `.gitmodules` (new submodule entry).
+**Submodule added**: `raw/code/tpu-recipes` → `https://github.com/AI-Hypercomputer/tpu-recipes.git` @ commit `e284e3613721882ce3e15c533a76c691443ea60f`.
+**Key result**: AI-Hypercomputer's curated per-(model, hardware, topology) reproduction recipes on Cloud TPU. Each recipe pins a MaxText tag (e.g. `tpu-recipes-v0.1.4`), a `jax-stable-stack` Docker image (e.g. `jax0.6.1-rev1`), the launch command, and the **MaxText `tuning_params` block** used to hit the published throughput target. Coverage: Trillium (v6e-32/64/128/256) + Ironwood (v7x 4×4×4 / 4×8×8) for Llama 3.1 (8B/70B/405B), Gemma 3-12B, Gemma 4-26B/31B, Mixtral 8×7B / 8×22B, DeepSeek 3-671B, Qwen 3-235B, GPT-OSS 120B, Wan 2.1-14B, GPT-3 175B; legacy v5p tier. Plus `microbenchmarks/` (matmul TFLOPS + HBM bandwidth on v6e-1) and `utils/profile_convert.py` (`.xplane.pb` → text).
+**Notes**: Single most direct public source for "what flags Google's perf team picked for this combination." Closest external precedent for the gemma4 program here: the `Gemma3-12B-MaxText/v6e-*` recipes (family + scale) and the published `Llama3.1-70B-MaxText/v6e-32` `tuning_params` block (`remat_policy: custom`, `decoder_layer_input: offload`, `query_proj/key_proj/value_proj: offload`, `per_device_batch_size: 2`). Future hypotheses touching `remat_policy` or per-projection offload should cite the closest matching recipe as the prior. Microbenchmark harness usable to establish v6e-1 chip-level rooflines (matmul ~827 TFLOPS bf16 8192³ with `xla_tpu_scoped_vmem_limit_kib=65536`; HBM ~1359 GB/s 32 MiB copy) — useful when an op-profile roofline classification is in dispute. No subpages created (recipe `READMEs` are themselves the leaves; no perf-relevant subsystems warrant their own wiki page).
+
 ## [2026-04-24] analyze + run-experiment | jax-exp53: splash block-size sweep under new regime (REJECTED, flat) + new-regime ceiling analysis
 
 **Op**: run-experiment + analyze.

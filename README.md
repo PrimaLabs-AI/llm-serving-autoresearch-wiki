@@ -232,6 +232,7 @@ The repos below are git submodules under `raw/code/` and have corresponding page
 - [axlearn](raw/code/axlearn) — Apple's training framework; only public Pallas Mamba1 / Mamba2 / RAttention SSM kernels.
 - [EasyDeL](raw/code/EasyDeL) — training/serving framework wrapping ejkernel.
 - [marin](raw/code/marin) — vendors levanter; fused CE kernel with Gemma-style logit soft-cap + deployment-time autotune harness.
+- [tpu-recipes](raw/code/tpu-recipes) — AI-Hypercomputer's reproducible recipes for training + inference on Cloud TPU (Trillium v6e and Ironwood v7x). Tuned per-(model, hardware, topology) MaxText configs (`remat_policy`, `decoder_layer_input: offload`, `query_proj`/`key_proj`/`value_proj` offload, FSDP sharding) for Llama 3.1, Gemma 3/4, Mixtral, DeepSeek 3, Qwen 3, GPT-OSS, Wan 2.1, GPT-3, plus diffusion (SDXL, Diffusion-2). Includes microbenchmarks for HBM bandwidth and matmul peak throughput.
 
 ### Other
 
