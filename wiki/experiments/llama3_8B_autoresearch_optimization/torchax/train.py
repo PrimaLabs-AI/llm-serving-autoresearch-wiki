@@ -159,6 +159,12 @@ def main(
     use_real_data: bool = True,   # True=wikitext, False=random tokens (perf smoke only)
     use_splash: bool = False,     # True = override torch.nn.functional.scaled_dot_product_attention
                                   # with the canonical TPU splash-attention kernel.
+    use_per_layer_remat: bool = False,  # True = wrap each LlamaDecoderLayer.forward in
+                                  # jax.checkpoint(policy=nothing_saveable). 32 distinct
+                                  # checkpoint scopes force XLA to schedule layer-by-layer
+                                  # — should reduce compile-time HBM peak vs the outer
+                                  # gradient_checkpoint exp 11 used (which collapses to
+                                  # one giant scope and XLA schedules everything live).
     profile_dir: str | None = None,
     profile_step: int = 5,
 ):
@@ -224,6 +230,54 @@ def main(
         torchax.default_env().override_op_definition(
             F.scaled_dot_product_attention, _custom_attention)
         print("[attn] splash kernel installed (GQA-native, mesh-shard P('fsdp','tp',_,_))",
+              flush=True)
+
+    # Per-layer remat — patches LlamaModel.forward to wrap each
+    # decoder_layer call in `interop.gradient_checkpoint`. Each layer becomes
+    # its own checkpoint scope so XLA schedules them serially. The full
+    # outer-loss `gradient_checkpoint` (exp 11) collapsed everything to one
+    # scope and didn't reduce compile-time HBM peak.
+    if use_per_layer_remat:
+        import types
+        from transformers.modeling_outputs import BaseModelOutputWithPast
+        try:
+            from transformers.masking_utils import create_causal_mask
+        except ImportError:
+            from transformers.models.llama.modeling_llama import create_causal_mask
+        _remat_policy = jax.checkpoint_policies.nothing_saveable
+        def _patched_model_forward(self, input_ids=None, attention_mask=None,
+                                   position_ids=None, past_key_values=None,
+                                   inputs_embeds=None, use_cache=None, **kwargs):
+            if inputs_embeds is None:
+                inputs_embeds = self.embed_tokens(input_ids)
+            if position_ids is None:
+                position_ids = torch.arange(
+                    inputs_embeds.shape[1], device=inputs_embeds.device
+                ).unsqueeze(0)
+            causal_mask = create_causal_mask(
+                config=self.config, inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values, position_ids=position_ids,
+            )
+            hidden_states = inputs_embeds
+            position_embeddings = self.rotary_emb(
+                hidden_states, position_ids=position_ids)
+            def _make_layer_call(layer):
+                def call(h, mask, cos, sin):
+                    return layer(h, attention_mask=mask,
+                                 position_embeddings=(cos, sin))
+                return torchax.interop.gradient_checkpoint(
+                    call, kwargs={"policy": _remat_policy})
+            cos, sin = position_embeddings
+            for decoder_layer in self.layers[:self.config.num_hidden_layers]:
+                hidden_states = _make_layer_call(decoder_layer)(
+                    hidden_states, causal_mask, cos, sin)
+            hidden_states = self.norm(hidden_states)
+            return BaseModelOutputWithPast(
+                last_hidden_state=hidden_states, past_key_values=past_key_values)
+        model.model.forward = types.MethodType(_patched_model_forward, model.model)
+        print(f"[remat] per-layer gradient_checkpoint installed "
+              f"(policy=nothing_saveable, {len(model.model.layers)} scopes)",
               flush=True)
 
     # Tokenizer (only needed if use_real_data).
