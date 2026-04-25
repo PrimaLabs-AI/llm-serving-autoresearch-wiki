@@ -179,6 +179,8 @@
   },
   "active": "81b05cd2d3f4645c",
   "lastOpenFiles": [
+    "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py.tmp.106074.1777100912635",
+    "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/data.py.tmp.106074.1777099803140",
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py.tmp.106074.1777099321779",
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py.tmp.106074.1777099316801",
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py.tmp.106074.1777099312517",
@@ -188,8 +190,6 @@
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/__pycache__/train.cpython-313.pyc",
     "raw/profiles/2026-04-25-063047-llama3-baseline",
     "raw/profiles/2026-04-25-063009-llama3-baseline",
-    "raw/profiles/2026-04-25-062648-llama3-baseline",
-    "raw/profiles/2026-04-25-062344-llama3-baseline",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/README.md",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/OBSERVATIONS.md",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-24-exp53-jax-splash-block-sweep-fp32master-rejected.md",

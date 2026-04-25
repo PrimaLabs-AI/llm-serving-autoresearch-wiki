@@ -50,7 +50,7 @@ def make_dataloader(
     split: str = "train",
     dataset_name: str = "wikitext",
     dataset_config: str = "wikitext-2-raw-v1",
-    streaming: bool = True,
+    streaming: bool = False,
 ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
     from datasets import load_dataset
     ds = load_dataset(dataset_name, dataset_config, split=split, streaming=streaming)

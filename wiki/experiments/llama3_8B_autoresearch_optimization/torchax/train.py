@@ -15,6 +15,16 @@ import jax
 import jax.numpy as jnp
 import jax.lax as lax
 import optax
+
+# Multi-host JAX init: required on multi-slice / multi-host GKE setups (e.g.
+# v6e-8 = 2 hosts × 4 chips). On a single-host VM this no-ops cleanly.
+# TPU_WORKER_ID is set by XPK; if absent we're running stand-alone.
+if "TPU_WORKER_ID" in os.environ:
+    jax.distributed.initialize()
+    print(f"[dist] jax.distributed initialized; "
+          f"process {jax.process_index()}/{jax.process_count()}, "
+          f"local devices={jax.local_device_count()}, "
+          f"global devices={jax.device_count()}")
 import torch
 import torchax
 from torchax import interop
