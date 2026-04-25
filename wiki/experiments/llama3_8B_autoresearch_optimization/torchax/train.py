@@ -25,6 +25,14 @@ import functools
 import os
 import time
 
+# Stub `jaxtyping.jaxtyped` to avoid typeguard AST-walk crash on tokamax's
+# `*B T H d` annotations under py3.13. Must run before any tokamax import.
+try:
+    import jaxtyping as _jt
+    _jt.jaxtyped = lambda typechecker=None: (lambda fn: fn)
+except ImportError:
+    pass
+
 import fire
 import jax
 import jax.numpy as jnp
@@ -115,15 +123,17 @@ def _materialize_buffers_replicated(model: torch.nn.Module, mesh) -> None:
     _walk(model)
 
 
-def create_sharded_weights(model, mesh):
+def create_sharded_weights(model, mesh, sharding_map=None):
     """Walk model.state_dict() and instantiate each weight directly on its
     shard via `jax.make_array_from_callback`. Skips entries with no sharding
     spec — caller is responsible for any unmatched buffers."""
+    if sharding_map is None:
+        sharding_map = SHARDING_MAP
     res = {}
     env = torchax.default_env()
     skipped = []
     for name, weight_meta in model.state_dict().items():
-        spec = SHARDING_MAP.get(_process_sharding_name(name))
+        spec = sharding_map.get(_process_sharding_name(name))
         if spec is None:
             skipped.append(name)
             continue
@@ -159,6 +169,12 @@ def main(
     use_real_data: bool = True,   # True=wikitext, False=random tokens (perf smoke only)
     use_splash: bool = False,     # True = override torch.nn.functional.scaled_dot_product_attention
                                   # with the canonical TPU splash-attention kernel.
+    use_scan: bool = False,       # True = use model.scan.LlamaForCausalLMScan which
+                                  # stacks the 32 LlamaDecoderLayers into a single
+                                  # scan body via torchax.train.ScannedModule. XLA
+                                  # compile-time HBM analysis sees one body's worth
+                                  # of buffers instead of the 32-unrolled sum, often
+                                  # freeing several GiB on high-density shapes.
     use_per_layer_remat: bool = False,  # True = wrap each LlamaDecoderLayer.forward in
                                   # jax.checkpoint(policy=nothing_saveable). 32 distinct
                                   # checkpoint scopes force XLA to schedule layer-by-layer
@@ -171,6 +187,10 @@ def main(
                                   # standard mixed-precision pattern: fp32 master
                                   # for the optimizer step, smaller dtype for the
                                   # forward/backward.
+    use_tokamax_ce: bool = False, # True = use tokamax.linear_softmax_cross_entropy_loss
+                                  # which streams logsumexp over V via Pallas
+                                  # (mosaic_tpu impl). Skip lm_head materialization
+                                  # → ~256 MiB/chip activation savings at seq=8192.
     profile_dir: str | None = None,
     profile_step: int = 5,
 ):
@@ -200,15 +220,27 @@ def main(
     print(f"[load] model_id={model_id} weights_dtype={weights_dtype} (meta init)",
           flush=True)
     with torch.device("meta"):
-        model = LlamaForCausalLM.from_pretrained(
-            model_id, torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-        ) if False else LlamaForCausalLM(_load_config(model_id))
+        if use_scan:
+            from model.scan import LlamaForCausalLMScan
+            model = LlamaForCausalLMScan(
+                _load_config(model_id),
+                checkpoint_policy=jax.checkpoint_policies.nothing_saveable)
+            print("[scan] LlamaForCausalLMScan installed (32 layers stacked into "
+                  "1 scan body)", flush=True)
+        else:
+            model = LlamaForCausalLM.from_pretrained(
+                model_id, torch_dtype=torch_dtype,
+                low_cpu_mem_usage=True,
+            ) if False else LlamaForCausalLM(_load_config(model_id))
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[load] model has {n_params/1e9:.2f} B parameters", flush=True)
 
     # Sharded weight init.
-    state_dict = create_sharded_weights(model, mesh)
+    if use_scan:
+        from model.sharding import SCAN_SHARDING_MAP
+        state_dict = create_sharded_weights(model, mesh, sharding_map=SCAN_SHARDING_MAP)
+    else:
+        state_dict = create_sharded_weights(model, mesh)
     model.load_state_dict(state_dict, assign=True, strict=False)
 
     # Materialize any non-sharded buffers (HF Llama RoPE inv_freq, etc.) as
@@ -243,7 +275,7 @@ def main(
     # its own checkpoint scope so XLA schedules them serially. The full
     # outer-loss `gradient_checkpoint` (exp 11) collapsed everything to one
     # scope and didn't reduce compile-time HBM peak.
-    if use_per_layer_remat:
+    if use_per_layer_remat and not use_scan:
         import types
         from transformers.modeling_outputs import BaseModelOutputWithPast
         try:
@@ -306,17 +338,64 @@ def main(
     env = torchax.default_env()
     jittable_mod = JittableModule(model)
 
-    def model_fn(weights, buffers, args):
-        out = jittable_mod.functional_call("forward", weights, buffers, args)
-        # HF returns CausalLMOutputWithPast; under torchax, attribute access works.
-        return out.logits if hasattr(out, "logits") else out[0]
+    if use_tokamax_ce:
+        # Skip lm_head — return hidden_states only. Loss path applies tokamax
+        # `linear_softmax_cross_entropy_loss` (Pallas mosaic_tpu) over flat
+        # B*L without materializing [B*L, V] logits.
+        try:
+            import tokamax as _tokamax
+        except Exception as e:
+            raise RuntimeError(
+                "use_tokamax_ce=True requires tokamax importable; tried "
+                "jaxtyping stub at module import. Fail: " + str(e))
+        # For LlamaForCausalLMScan we need `model.model_no_lm_head` semantics.
+        # Easiest: monkey-patch lm_head to identity at use time.
+        if not use_scan:
+            raise RuntimeError("use_tokamax_ce currently requires use_scan=True")
+        # Replace lm_head with Identity so jittable_mod.functional_call("forward")
+        # returns hidden_states pre-projection.
+        _orig_lm_head = model.lm_head
+        model.lm_head = torch.nn.Identity()
+        # Stash the lm_head weight in a place the loss closure can access.
+        # `model.lm_head_weight_ref` lives on model so JittableModule's
+        # extract_all_buffers picks it up (it's a torchax tensor).
+        model.lm_head_weight_ref = _orig_lm_head.weight  # type: ignore[attr-defined]
+        print("[ce] tokamax.linear_softmax_cross_entropy_loss enabled "
+              "(lm_head bypassed; weight reattached as buffer)", flush=True)
 
-    def loss_fn(logits, labels):
-        # Causal LM cross-entropy (mean over non-ignored tokens).
-        v = logits.shape[-1]
-        return torch.nn.functional.cross_entropy(
-            logits.reshape(-1, v), labels.reshape(-1)
-        )
+        def model_fn(weights, buffers, args):
+            out = jittable_mod.functional_call("forward", weights, buffers, args)
+            return out  # hidden states (B, L, H)
+
+        def loss_fn(hidden, labels):
+            # hidden: torchax (B, L, H). lm_head weight is in buffers.
+            B, L, H = hidden.shape
+            BL = B * L
+            h_flat = hidden.reshape(BL, H)
+            l_flat = labels.reshape(BL)
+            # lm_head_weight_ref shape (V, H); tokamax wants (H, V).
+            w_VH = jittable_mod.buffers["lm_head_weight_ref"]
+            w_HV = w_VH.transpose(0, 1)
+            # Convert to jax for tokamax (it's a JAX op).
+            jh, jl, jw = torchax.interop.jax_view((h_flat, l_flat, w_HV))
+            jloss = _tokamax.linear_softmax_cross_entropy_loss(
+                jh, jl, jw, reduction="mean", implementation="mosaic_tpu")
+            return torchax.interop.torch_view(jloss)
+    else:
+        def model_fn(weights, buffers, args):
+            out = jittable_mod.functional_call("forward", weights, buffers, args)
+            # HF returns CausalLMOutputWithPast; under torchax, attribute access works.
+            # LlamaForCausalLMScan returns the logits tensor directly.
+            if isinstance(out, torch.Tensor):
+                return out
+            return out.logits if hasattr(out, "logits") else out[0]
+
+        def loss_fn(logits, labels):
+            # Causal LM cross-entropy (mean over non-ignored tokens).
+            v = logits.shape[-1]
+            return torch.nn.functional.cross_entropy(
+                logits.reshape(-1, v), labels.reshape(-1)
+            )
 
     # AMP: optionally force mu/nu to fp32 even when weights are bf16 (the
     # standard mixed-precision pattern — fp32 master for the optimizer

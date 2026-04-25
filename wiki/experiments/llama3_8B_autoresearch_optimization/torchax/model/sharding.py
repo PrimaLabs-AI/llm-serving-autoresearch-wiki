@@ -49,6 +49,29 @@ SHARDING_MAP = {
 }
 
 
+# Scan-over-layers sharding map (used by `model.scan.LlamaForCausalLMScan`).
+# State-dict keys after wrapping are joined-by-'___' (ScannedModule's
+# convention) and prefixed with 'scanned_layers.params.layer___'. The
+# leading dim (32 stacked layers) gets `None` in PartitionSpec → unsharded
+# across the layer dim.
+SCAN_SHARDING_MAP = {
+    # Top-level (non-scanned) weights — same as SHARDING_MAP entries.
+    "embed_tokens.weight": ("fsdp", "tp"),
+    "norm.weight": ("fsdp",),
+    "lm_head.weight": ("tp", "fsdp"),
+    # Scanned per-layer weights (stacked on leading dim).
+    "scanned_layers.params.layer___self_attn___q_proj___weight": (None, "tp", "fsdp"),
+    "scanned_layers.params.layer___self_attn___k_proj___weight": (None, "tp", "fsdp"),
+    "scanned_layers.params.layer___self_attn___v_proj___weight": (None, "tp", "fsdp"),
+    "scanned_layers.params.layer___self_attn___o_proj___weight": (None, "fsdp", "tp"),
+    "scanned_layers.params.layer___mlp___gate_proj___weight":     (None, "tp", "fsdp"),
+    "scanned_layers.params.layer___mlp___up_proj___weight":       (None, "tp", "fsdp"),
+    "scanned_layers.params.layer___mlp___down_proj___weight":     (None, "fsdp", "tp"),
+    "scanned_layers.params.layer___input_layernorm___weight":          (None, "fsdp"),
+    "scanned_layers.params.layer___post_attention_layernorm___weight": (None, "fsdp"),
+}
+
+
 def _process_sharding_name(name: str) -> str:
     """Replace integer tokens (layer indices) with `*` for wildcard matching."""
     def is_int(t):
