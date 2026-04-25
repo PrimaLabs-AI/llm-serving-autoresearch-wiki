@@ -1,5 +1,7 @@
-# TPU Performance Autoresearch Wiki — Index
-*Last updated: 2026-04-24 — 180 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 4 analyses + 6 analysis subpages + jax-exp47 rejected page)*
+# TPU Model Performance Auto-optimization — Index
+*Last updated: 2026-04-25 — 180 pages (26 codebases + 45 sources + 96 concepts + 1 model-program + 4 analyses + 6 analysis subpages + jax-exp47 rejected page)*
+
+*Methodology: autoresearch (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
 ## ⭐ Featured reference — Pallas kernel directory
 

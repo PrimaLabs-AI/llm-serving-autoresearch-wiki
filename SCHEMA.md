@@ -1,4 +1,6 @@
-# TPU Performance Autoresearch Wiki — Schema & Operating Rules
+# TPU Model Performance Auto-optimization — Schema & Operating Rules
+
+*(Autoresearch methodology; see [README](README.md) for the project intro.)*
 
 You maintain a knowledge base in service of an **automated optimization loop** for TPU model performance. The loop is: ingest knowledge (papers, docs, codebases, profiles) → formulate ranked hypotheses → run experiments → record observations → update priors → formulate next hypotheses. Your job is to write and maintain every file. The human curates sources, sets optimization targets, approves experiments, and arbitrates contradictions.
 
@@ -254,7 +256,7 @@ Fix mechanical issues automatically; flag judgment calls for the human.
 ## index.md conventions
 
 ```markdown
-# TPU Performance Autoresearch Wiki — Index
+# TPU Model Performance Auto-optimization — Index
 *Last updated: YYYY-MM-DD — N pages*
 
 ## Models (N)

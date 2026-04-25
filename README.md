@@ -1,9 +1,9 @@
-# TPU Performance Autoresearch Wiki
+# TPU Model Performance Auto-optimization
 
 > **Model optimization that feels like cheating.**
 > Point an LLM agent at your training script, come back to **+10 – 15 % TPS** with a fully documented research trail.
 
-This repository is an experiment in **automating TPU model performance optimization** end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself.
+This repository is an experiment in **autonomous TPU model performance optimization**, end-to-end: profile analysis, hypothesis generation, experiment execution on real hardware, and result synthesis — all run by an LLM agent against a knowledge base it maintains itself. The methodology is an **autoresearch** loop (after [Karpathy's autoresearch paper](raw/code/autoresearch)) specialized to TPU perf — ranked falsifiable hypotheses, experiments with profile-grounded verdicts, and revised priors feeding the next round.
 
 ---
 
