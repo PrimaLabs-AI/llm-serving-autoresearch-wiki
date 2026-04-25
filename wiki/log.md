@@ -1,6 +1,34 @@
 # Log
 
-## [2026-04-25] run-experiment | torchax Llama 3 8B v6e-8 baseline (SUPPORTED, 36,729 TPS = 4,591/chip, 22.9% MFU)
+## [2026-04-25] run-experiment-batch | torchax Llama 3 8B v6e-8 — 7 experiments, splash+bs=4 ACCEPTED (35.7% MFU, +12.8 pp)
+
+**Op**: run-experiment (×7) + formulate-hypothesis (×1) + protocol-update (program.md branch convention).
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp{1..7}-*.md` (7 experiment pages); `wiki/hypotheses/llama3-torchax-xla-recipe-flags.md` (hypothesis page); `raw/profiles/2026-04-25-llama3-8b-exp3-splash-bs4/` + `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-25-llama3-8b-exp3-splash-bs4/` (winner profile, both ranks); `raw/profiles/2026-04-25-llama3-8b-exp5-splash-seq2k/` + GCS mirror.
+**Pages updated**: `wiki/index.md` (Experiments 4 → 9; llama3-8b model status → 35.7 % MFU); `wiki/experiments/llama3_8B_autoresearch_optimization/program.md` (added "Experiment branch" binding row — convention `v6e8-llama3-8b-torchax-<YYYYMMDD>-exp<NN>-<short-slug>`); `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py` (added `--use_splash` flag + `env.override_op_definition(F.scaled_dot_product_attention, …)` canonical splash wiring on the splash-using branches).
+**Branches created** (8): `v6e8-llama3-8b-torchax-20260425-{baseline, exp1-xla-recipe-flags, exp2-splash-bs2, exp3-splash-bs4, exp4-splash-bs8, exp5-splash-seq2k, exp6-splash-bs4-seq2k, exp7-splash-xla-bs4}`.
+**Docker images**: `us-central1-docker.pkg.dev/tpu-pytorch/test/llama3-8b-torchax-container:hf-v1` (baseline + exp1; no splash) and `:hf-v2` (exp2-exp7; splash override).
+**Key result**: **exp 3 (splash + bs=4) ACCEPTED** — 57,154 TPS aggregate (7,144/chip), 35.7 % MFU at `bs=4 seq=1024 fsdp=8` on v6e-8. **+55.6 % TPS, +12.8 pp MFU vs baseline.** Mechanism: splash makes attention activation `O(L)` which frees enough HBM that `bs=4` fits (it OOM'd by 1 GiB on the no-splash baseline); the doubled per-chip token count amortizes non-attention compute across 2× the work, lifting per-token MFU. Splash itself at `bs=2` (exp 2) is +1.6 % within noise — it is the precondition, not the wing.
+
+**Ranking by verdict**:
+- 🏆 exp 3 splash+bs=4 = **35.7 % MFU** — accepted (current target).
+- exp 5 splash+seq=2048 = 34.0 % MFU — accepted (alternate path to seq=8192).
+- exp 7 splash+xla-flags = 35.0 % MFU — refuted (flags don't help at this density).
+- exp 2 splash@baseline = 23.3 % MFU — potential (precondition only).
+- exp 6 splash+bs=4+seq=2048 = compile OOM — invalid.
+- exp 4 splash+bs=8 = compile OOM 7.36 GiB — invalid.
+- exp 1 xla-flags@baseline = 22.6 % MFU — refuted.
+
+**Notes**: New durable heuristic captured: **MaxText recipe XLA flags require per-chip B·L ≳ ~10,000 to pay for themselves** (recipe is bs=3 seq=8192 = 24,576; we are at 4,096). At lower B·L, FSDP all-gather is already fully hidden behind compute and the flags are no-ops. Compile time penalty is +6–17 s. Don't enable speculatively until compute density justifies.
+
+**OOM mechanism — bs=8 and bs=4-seq=2048 both crash** because splash compresses attention activations (`O(L²)` → `O(L)`) but not the FFN intermediate `[B, L, 14336]` which is the largest bf16 activation in the train graph. Both OOMs converge on the same path forward: **selective remat that recomputes the FFN intermediate** (`save_only_these_names = {hidden_state}`-style), or **scan-over-layers** to share the FFN intermediate buffer across all 32 layers (also ~32× compile-time reduction). Queued as next experiments.
+
+**Compile cache write permission denied** persists on the gcsfuse `/data/cache/xla` mount — every run cold-compiles 70-110 s. Investigated to gcsfuse mount config (UID mismatch — pod cannot write the bucket). First fix attempt: switch to `/tmp` + post-run sync script (queued).
+
+**Process retrofit**: per user direction, established the **per-experiment branch convention**: `v6e8-llama3-8b-torchax-<YYYYMMDD>-exp<NN>-<short-slug>` (or `…-baseline`). Each branch holds the exact `train.py` + `model/` + `data.py` state used for that run plus the experiment page; even env-only experiments get a branch. Documented in `program.md`. Backfilled all 7 experiments (today's batch) onto their respective branches.
+
+**Gap to MaxText reference (44.6 % MFU)**: 8.9 pp remaining. Most likely sources (in order): (a) compute density — MaxText recipe is bs=3 seq=8192, B·L = 24,576 vs our 4,096; selective remat / scan + bs=4 seq=8192 would close most of this. (b) framework overhead — JittableModule + torchax interop vs MaxText's pure-JAX hand-tuned graph; +1–3 pp at most. (c) kernel choice / scheduler — minor.
+
+
 
 **Op**: run-experiment.
 **Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-baseline.md`; `raw/profiles/2026-04-25-llama3-8b-baseline/` (mirror of GCS, 668 MiB, both ranks); `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-25-llama3-8b-baseline/`.
