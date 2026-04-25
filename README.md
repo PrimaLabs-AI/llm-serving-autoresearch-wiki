@@ -18,7 +18,7 @@ The claim is structural, not incremental: **given a sufficiently capable LLM, th
 
 Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierarchical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
 
-### 📊 Xprof MCP — profiling as a first-class LLM capability
+### 🔌 Xprof MCP — profiling as a first-class LLM capability
 
 Autoresearch is a feedback loop: hypothesize → experiment → **observe** → revise. Without the *observe* step grounded in real signal, the loop collapses into flag-guessing. For TPU performance optimization, "real signal" means knowing where each millisecond of step time goes, which tensor sits where in HBM, and where every op lands on the roofline. The source of truth is [**XProf**](https://github.com/openxla/xprof), OpenXLA's official TPU profiler — step-time breakdown, per-HLO-op runtime + memory traffic, collective-overlap timing, roofline classification, memory timeline.
 
@@ -66,15 +66,30 @@ Combine these ingredients and you have an agent that knows your model and your c
 And critically, this is a **self-learning, self-improving** agent. Every experiment it runs — winners *and* losers — is filed back into the wiki as a permanent piece of context: what was tried, what worked, what didn't, and *why*. The next hypothesis is scored against that growing record, so a refuted experiment in week one shapes the ranked list in week ten; a generalizable lesson extracted from one failed run ("scan-over-layers needs an internally-tiled attention kernel") becomes a prior the agent applies automatically the next time scan comes up. The longer it runs, the smarter it gets — not because the model is updating, but because the wiki is.
 
 ```mermaid
-flowchart LR
-    subgraph IN["<span style='font-size:1.25em'><b>📥 What you bring</b></span>"]
-        direction TB
-        IN1["💻 Your model +<br/>training script"]
-        IN2["🖥️ Target<br/>hardware"]
+flowchart TB
+    subgraph INPUTS_ROW[" "]
+        direction LR
+        subgraph IN["<span style='font-size:1.25em'><b>📥 What you bring</b></span>"]
+            direction TB
+            IN1["💻 Your model +<br/>training script"]
+            IN2["🖥️ Target<br/>hardware"]
+        end
+        INTERNET{{"<span style='font-size:1.25em'><b>☁️ Internet</b></span><br/>papers · docs · OSS repos"}}
     end
 
-    subgraph ENGINE["<span style='font-size:1.25em'><b>🔁 Autoresearch loop</b></span>"]
-        direction TB
+    subgraph HUB_ROW[" "]
+        direction LR
+        WIKI[("<div style='text-align:center'><span style='font-size:1.25em'><b>🧠 LLM Wiki</b></span></div><div style='text-align:left;white-space:nowrap'>• Domain knowledge<br/>• Your model code<br/>• Framework sources<br/>• Reference implementations<br/>• Research trail</div>")]
+        subgraph OUT["<span style='font-size:1.25em'><b>📤 What you get back</b></span>"]
+            direction TB
+            OUT1["💻 Optimized model code<br/>committed to your repo"]
+            OUT2["🏆 SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
+            OUT3["📜 Full research trail —<br/>every experiment, win or loss"]
+        end
+    end
+
+    subgraph ENGINE["<span style='font-size:1.25em'><b>🔁 Autoresearch 🤖</b></span>"]
+        direction LR
         E1["📖 READS<br/>priors, references"]
         E2["📊 PROFILES<br/>real runs, HLO"]
         E3["🧪 EXPERIMENTS<br/>edits real code,<br/>runs on real TPU"]
@@ -85,24 +100,19 @@ flowchart LR
         E4 --> E1
     end
 
-    subgraph OUT["<span style='font-size:1.25em'><b>📤 What you get back</b></span>"]
-        direction TB
-        OUT1["💻 Optimized model code<br/>committed to your repo"]
-        OUT2["🏆 SOTA configuration<br/>discovered<br/>(kernels, flags, sharding)"]
-        OUT3["📜 Full research trail —<br/>every experiment, win or loss"]
-    end
-
-    WIKI[("<div style='text-align:center'><span style='font-size:1.25em'><b>🧠 LLM Wiki</b></span></div><div style='text-align:left;white-space:nowrap'>• Domain knowledge<br/>• Your model code<br/>• Framework source<br/>• Reference implementations<br/>• Research trail</div>")]
-
-    IN ==> ENGINE ==> OUT
-
+    IN ==> WIKI
+    INTERNET -- "ingest data sources" --> WIKI
+    WIKI ==> OUT
     WIKI -. "load priors" .-> ENGINE
     ENGINE -. "file every experiment back" .-> WIKI
 
+    style INPUTS_ROW fill:none,stroke:none
+    style HUB_ROW fill:none,stroke:none
     style IN fill:#2563eb,stroke:#93c5fd,stroke-width:2px,color:#fff
     style ENGINE fill:#ea580c,stroke:#fdba74,stroke-width:3px,color:#fff
     style OUT fill:#16a34a,stroke:#86efac,stroke-width:2px,color:#fff
     style WIKI fill:#7c3aed,stroke:#c4b5fd,stroke-width:3px,color:#fff
+    style INTERNET fill:#0ea5e9,stroke:#bae6fd,stroke-width:3px,color:#fff
 ```
 
 Point it at a model and act as reviewer — you approve hypotheses, arbitrate contradictions, and audit the trail; the agent does the reading, profiling, experimenting, and learning. Every cycle leaves the wiki smarter than before, so the next cycle starts from a better prior.
@@ -110,9 +120,9 @@ Point it at a model and act as reviewer — you approve hypotheses, arbitrate co
 ## What this unlocks
 
 - **Optimization that feels like cheating.** Describe a goal in a sentence. Come back to a configuration at or near the hardware's achievable ceiling, with a linked research trail showing every experiment that led there. The LLM picks the right experiments because it has read the right papers, studied the right code, and learned from every prior experiment it ran on this model.
-- **Debug the framework, not just the model.** Most TPU perf issues aren't in your model — they're in torchax's dispatch, JAX's sharding plan, or a Pallas kernel's `shard_map` wrapping. With the framework source ingested, the LLM can read it. When torchax's `JittableModule` dedup produced a tied-weight crash (exp 2), the agent pinpointed the cause by grepping `raw/code/torchax/`. When scan-over-layers + XLA SDPA regressed −60 % (exp 51), it explained the mechanism by cross-referencing JAX's scan lowering with the attention code path.
 - **Ask questions, let the LLM explore.** "Why are we OOM-ing at batch=4?" "What kernel would help the loop-fusion bucket?" "Does splash win at seq=2048?" — the LLM reads the profile, surfaces the relevant prior experiments, proposes the next hypothesis, runs it. You don't need to know what to ask next.
 - **Dramatic ramp-up speedup.** An engineer new to TPU perf can browse `concepts/` → `analyses/` → `experiments/` and build a real mental model in hours instead of weeks. The wiki is a curriculum that **writes itself as it's used**.
+- **Debug the framework, not just the model.** Most TPU perf issues aren't in your model — they're in torchax's dispatch, JAX's sharding plan, or a Pallas kernel's `shard_map` wrapping. With the framework source ingested, the LLM can read it. When torchax's `JittableModule` dedup produced a tied-weight crash (exp 2), the agent pinpointed the cause by grepping `raw/code/torchax/`. When scan-over-layers + XLA SDPA regressed −60 % (exp 51), it explained the mechanism by cross-referencing JAX's scan lowering with the attention code path.
 - **Generalizable findings, written down.** A recent run discovered that **Pallas custom-calls only beat XLA when XLA wasn't already fusing the pattern** — confirmed twice independently (exp 33 Pallas RMSNorm, exp 47 levanter fused CE, both rejected at the same boundary tax). That insight now lives in [an analysis page](wiki/analyses/2026-04-24-gemma4-jax-ceiling-and-process-retrospective.md) and will guide every future Pallas hypothesis. Writing this down is what turns 50 experiments into leverage for the next 50.
 
 
