@@ -1,131 +1,87 @@
-# jax code — Gemma 4 E4B autoresearch (native JAX / Flax NNX)
+# Native-JAX (Flax NNX) Llama 3 8B trainer
 
-Native-JAX port of Gemma 4 E4B with a Flax NNX model, a HuggingFace
-safetensors weight loader, a JAX sharding plan mirroring
-`../torchax/model/sharding.py`, and a trainer that mirrors the torchax
-trainer's CLI, flags, and summary block.
+Companion folder to [`../torchax/`](../torchax/README.md) — a **pure-JAX** port of the same Llama 3 8B training pipeline. No torchax, no PyTorch at run time. Uses Flax NNX for module construction, `optax.adamw` for the optimizer, and the same splash / tokamax / scan-over-layers kernel stack the torchax sibling validated.
 
-Companion folder: [`../torchax/`](../torchax/README.md) — the primary
-PyTorch-on-JAX execution path against which the native-JAX port's
-correctness + performance are measured.
+The trainer mirrors the torchax sibling **flag-for-flag** so the two stacks can be A/B'd directly. All design decisions about kernel choice, remat policy, batch/seq sweet-spot, and CE impl are inherited from the torchax experiment series — see [`../program.md`](../program.md) and the [torchax experiments index](../torchax/experiments/README.md).
 
 ## Layout
 
 ```
 jax/
-  README.md                 this file
-  train.py                  native-JAX trainer (CLI parity with torchax/train.py)
-  data.py                   wikitext loader + packer (mirror of ../torchax/data.py)
-  requirements.txt
-  run.sh                    wrapper (sets XLA_FLAGS / LIBTPU_INIT_ARGS)
+  README.md                this file
+  train.py                 native-JAX trainer (fire.Fire)
+  data.py                  wikitext-2-raw-v1 packer + fake_dataloader
+  splash_attn.py           tokamax-splash dispatch (verbatim from ../torchax/)
+  Dockerfile               jax-ai-image base + transformers + flax + tokamax
   model/
-    __init__.py             re-exports
-    modeling_gemma4.py      Gemma 4 text tower — Flax NNX
-    weight_loader.py        HF safetensors -> NNX Param tree
-    sharding.py             FSDP / TP mesh + param-sharding plan
-  tools/
-    parity_layer.py         per-layer numerical parity vs HF PyTorch
-    parity_attn.py          attention-only parity vs HF
-    parity_check.py         whole-model parity (slow — CPU only)
+    __init__.py            re-exports
+    modeling_llama3.py     Flax NNX port of LlamaForCausalLM(+Scan)
+    sharding.py            FSDP / TP plans + mesh helpers; SCAN_SHARDING_PLAN
+    weight_loader.py       HF safetensors -> NNX param tree (sharded device_put)
+  experiments/
+    README.md              experiment index for this stack
 ```
 
-## Scope
+## Architectural decisions
 
-Text-only tower. Skips:
-- audio (Gemma4Audio*)
-- vision (Gemma4Vision*)
-- multimodal orchestrators (Gemma4Model, Gemma4ForConditionalGeneration, Gemma4MultimodalEmbedder)
-- MoE (Gemma4TextExperts, Gemma4TextRouter) — E4B is dense per-layer
-
-Includes the PLE (per-layer embeddings) residual path since it's in the
-E4B checkpoint and affects the forward.
-
-## Architecture port notes
-
-Confirmed against `transformers 5.x` Gemma 4 source:
-
-- `Gemma4RMSNorm`: weight init = **ones**, forward = `normed * weight`
-  (NOT `(1 + weight)` — that was the Gemma 2/3 convention). Compute in
-  fp32, cast back at the end.
-- `Gemma4TextAttention.scaling = 1.0` — HF deliberately disables the
-  usual `1/sqrt(head_dim)` scaling because q_norm / k_norm already
-  normalize per-head. Baked into `Gemma4TextAttention` in this port.
-- Hybrid layer pattern: 5 sliding (head_dim=256) + 1 full (head_dim=512,
-  partial-RoPE 0.25) repeating. Last layer is full. E4B has 42 layers
-  (7 full + 35 sliding).
-- KV sharing: last 18 of 42 layers read (k, v) from an earlier same-type
-  layer. Their own `k_proj` / `v_proj` / `k_norm` / `v_norm` weights in
-  the HF checkpoint are dead and are dropped by the weight loader.
-- Tied `lm_head`: `tie_word_embeddings=True`. This port does **not**
-  instantiate a separate `lm_head` Param — the forward does
-  `hidden @ embed_tokens.weight.T` so there's one source of truth and
-  one sharding to manage.
+- **Param naming matches HF dot-for-dot.** `model.embed_tokens.weight`, `model.layers.{i}.self_attn.{q,k,v,o}_proj.weight`, etc. so the weight loader is a 1:1 mapping with no transpose layer.
+- **Linear weight shape is `(out, in)`** (matches `torch.nn.Linear`). Forward computes `x @ weight.T`.
+- **RoPE precomputed once** at `LlamaRotaryEmbedding.__init__` (single layer-type — much simpler than Gemma 4's hybrid sliding/full).
+- **Attention dispatch via env var** `JAX_ATTENTION_IMPL=splash|xla`. The trainer sets this based on `--use_splash` and registers the mesh with `set_splash_mesh(mesh)` so the kernel's `shard_map` has a concrete `Mesh` (Mosaic custom calls cannot be auto-partitioned).
+- **Scan-over-layers** is implemented by stacking each per-layer Linear/RMSNorm weight along a new leading dim (size `num_hidden_layers`). The forward calls `jax.lax.scan` over a functional decoder body that indexes the stacked params layer-by-layer. Sharding plan in `model/sharding.py` (`SCAN_SHARDING_PLAN`) prepends a `None` to every per-layer PartitionSpec so the stack dim stays unsharded.
+- **Tokamax CE goes through `shard_map`** with `psum` across `fsdp` (matches the torchax wrapper exactly). `chunked_xla` requires fp32 inputs (validated by torchax exp 62b vs invalid exp 66 — bf16 destroys precision in the lse accumulator).
+- **MFU formula** is the MaxText train-step TFLOPs (×3 for fwd + 2× bwd). Identical lines to torchax `train.py` lines 596-632.
 
 ## Running
 
-From this folder, with `/home/alekseyv_google_com/miniconda3/envs/gemma4_py313`
-active:
+The trainer expects to be invoked with `python -m train` from this folder so `model/` and `data.py` resolve as siblings on `sys.path`.
 
 ```bash
-# default: batch=4 seq=2048 steps=20 on v6e-4 FSDP.
-python -m train
-
-# smoke test first:
-python -m train --batch_size 1 --seq_len 1024 --steps 20
-
-# capture a profile around steps 10..12:
 WIKI_ROOT="/mnt/disks/persist/torch-tpu/tpu_performance_autoresearch_wiki"
-python -m train --batch_size 1 --seq_len 1024 --steps 20 \
-  --profile_dir "$WIKI_ROOT/raw/profiles/2026-04-23-gemma4-jax-baseline" \
-  --profile_steps 10 11 12
+cd "$WIKI_ROOT/wiki/experiments/llama3_8B_autoresearch_optimization/jax"
+
+# canonical: bs=3 seq=8192 fp32-master + bf16-compute, scan + tokamax-CE
+python -m train \
+    --use_real_data=True \
+    --use_splash=True \
+    --use_scan=True \
+    --use_tokamax_ce=True \
+    --tokamax_ce_impl=chunked_xla \
+    --tokamax_ce_autotune=True \
+    --weights_dtype=fp32 \
+    --compute_dtype=bf16 \
+    --master_dtype=fp32 \
+    --batch_size=3 \
+    --seqlen=8192 \
+    --train_steps=15
 ```
 
-CLI flags mirror `../torchax/train.py`:
-`--model_id --dataset --seq_len --batch_size --steps --learning_rate
- --warmup_steps --strategy fsdp|tp --fsdp / --dp / --tp --dtype bf16|fp32
- --profile_dir --profile_steps --log_every --grad_accum --seed --config`.
+Add `--profile_dir=$PROFILE_DIR --profile_step=5` to capture an xprof trace at step 5.
 
-Summary block is identical to the torchax trainer's so the shared
-`awk '/step  2/,/step 19/ ...'` tooling keeps working.
+## Flags
 
-## Parity checks
+Same set as the torchax sibling. Key flags only:
 
-Before trusting performance numbers, verify semantic parity against HF
-PyTorch. The layer-level check takes ~30s on CPU and catches nearly all
-bugs:
-
-```bash
-python tools/parity_layer.py
-# expected output:
-#   [rms] max=0
-#   [mlp] max ~ 1e-3
-#   [rope ...] max=0
-#   [layer 0 type=sliding_attention] max ~ 3e-2
-#   [parity] PASS
-```
-
-A full-model CPU parity check (`tools/parity_check.py`) exists but takes
-many minutes (a 7B CPU forward is not fast). Prefer the layer check.
-
-## Known limitations of this pass
-
-- **Attention = XLA SDPA**, not splash Pallas. A follow-up hypothesis
-  (see `../2026-04-23-exp34-*`) wires splash in analogously to
-  `../torchax/model/pallas_attention.py`.
-- **No scan-over-layers**. 42 separate `Gemma4TextDecoderLayer`
-  instances unroll at compile time. Follow-up: use `jax.lax.scan` or
-  `flax.nnx.scan` over layers with identical shapes — but E4B has
-  **heterogeneous** layers (sliding vs full) with **different head_dim
-  per layer type**, so scan needs two sub-scans.
-- **No fused bwd / explicit opt-state bf16 mix**. `optax.adamw` default.
-- **No captured-constants concern**: NNX `split/merge` threads Params
-  as pytree leaves through `jit` — no constant-capture risk like the
-  torchax `JittableModule` path.
+| Flag | Default | Notes |
+|---|---|---|
+| `--model_id` | `meta-llama/Meta-Llama-3-8B` | HF repo. |
+| `--batch_size` | `4` | Per-chip. Global = `batch_size × fsdp`. Sweet-spot at this shape: `bs=3 seq=8192` (torchax exp set). |
+| `--seqlen` | `1024` | Smoke-test default; production runs use 8192. |
+| `--train_steps` | `15` | Step 0 compiles; steps 0-1 dropped from MFU. |
+| `--tp_parallelism` | `1` | 1 = pure FSDP across all chips; >1 = 2D mesh. |
+| `--weights_dtype` | `bf16` | `bf16` or `fp32` (master). |
+| `--compute_dtype` | `match` | `match` inherits `weights_dtype`; `bf16` with `weights_dtype=fp32` → AMP. |
+| `--master_dtype` | `match` | `fp32` forces optimizer mu/nu to fp32 even when weights are bf16. |
+| `--use_splash` | `False` | True = splash kernel via env-gated dispatch. Trainer registers the mesh. |
+| `--use_scan` | `False` | True = `LlamaForCausalLMScan` (32 layers stacked into one scan body). |
+| `--scan_remat_policy` | `nothing_saveable` | `jax.checkpoint_policies` attribute name. |
+| `--use_tokamax_ce` | `False` | True = `tokamax.linear_softmax_cross_entropy_loss` (skip lm_head materialization). |
+| `--tokamax_ce_impl` | `mosaic_tpu` | `chunked_xla` is the validated faster path (exp 62b). |
+| `--tokamax_ce_autotune` | `False` | True = autotune CE block sizes. |
+| `--profile_dir` / `--profile_step` | unset | xprof capture at the given step. |
 
 ## See also
 
-- [torchax companion folder](../torchax/README.md) — reference
-  implementation; correctness anchor.
-- [scaling-book](../../../codebases/scaling-book.md) — native-JAX idioms.
-- [tokamax codebase page](../../../codebases/tokamax.md) — native-JAX
-  kernel library; integration cheaper here than through torchax.
+- [`../program.md`](../program.md) — shared experiment protocol.
+- [`../torchax/`](../torchax/) — sibling stack (primary, validated).
+- [`experiments/`](experiments/) — JAX-stack experiments index.
