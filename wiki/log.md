@@ -1,5 +1,207 @@
 # Log
 
+## [2026-04-26] run-experiment + profile | torchax Llama 3 8B v6e-8 — exp 75-81 final sweep at the exp 74b frontier; converged
+
+**Op**: run-experiment (× 11: exp 75-81 follow-ups) + profile capture (exp 79) + observation update.
+**Pages updated**: `wiki/experiments/.../2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md` (extended §"Refuted" with all post-acceptance refutations); `wiki/observations/llama3-8b-torchax-converged-stack-bottleneck-breakdown.md` (added §"Updated breakdown 2026-04-26 latest frontier").
+**Profile artifact**: `gs://tpu-pytorch-alekseyv-us-central2/jax-experiment/llama3-8b-exp79-tk-prof/` (kubectl-cp'd from pod `/tmp` then uploaded — the gcsfuse-mount /data/* paths return 403 on profile writes from inside the pod, so the workaround is: write profile to /tmp, post-run `tar czf` + `sleep 600` to keep pod alive, then `kubectl cp` from outside).
+**Key result**: Frontier holds at exp 74b — **6,559 tok/s/chip, 36.8 % MFU at bs=3 seq=8192**. Every post-acceptance knob refuted or invalid.
+**Refutations summary (all 2026-04-26)**:
+- exp 75a: `cost_estimate_flops_fwd/bwd` — neutral; XLA already overlaps without hints.
+- exp 76a/b: `q_seq_shards=2`/`q_seq_shards=4` — **INVALID** (NaN loss from step 1; q_seq_shards needs a context-parallel mesh axis we don't have).
+- exp 77a/b: VMEM=131,072 / 65,536 KiB — both -2.7 % / -3.1 %; VMEM=98 KiB still optimal.
+- exp 78a/b: `scan_remat_policy=dots_with_no_batch_dims_saveable` / `dots_saveable` — both OOM (matmul-output saves don't fit even at bs=2).
+- exp 80a/b/c: splash block-size variants (bkv=512, bq=1024, symmetric 2048/2048) — all -0.1 to -0.4 %; current splash 2048/1024/2048/2048 fused config still optimal.
+- exp 81a/b: `JAX_DEFAULT_MATMUL_PRECISION=bfloat16`/`tensorfloat32` — within noise / -0.5 %; `default` already does bf16 on TPU efficiently.
+**Profile breakdown at frontier** (single-host trace, exp 79):
+- Conv fusion (matmul): **54.4 %** of step time, HBM-BW util 0.54, **73.9 % MXU efficiency when running**
+- Splash MHA fwd+dkv: 21.8 %
+- Loop fusion (RMSNorm/silu/residual): 15.2 %, HBM-BW util 0.75 (saturated)
+- Tokamax CE: ~0 % (collapsed from 7.5 % via chunked_xla)
+- MXU utilization 55.0 % (was 51.9 % at exp 61b)
+**Cumulative day climb**: 4,591 → 6,559 tok/s/chip = **+42.9 % per-chip**. Gap to MaxText 44.6 % reference: 7.8 pp. Closing this gap would require a **custom Pallas matmul prologue** that fuses the bf16 weight materialization into the matmul (skip the HBM round-trip) and/or **MaxText-style layer fusion** patterns. Those are deep-work levers not reachable by knob-sweeping the existing call sites.
+
+## [2026-04-26] run-experiment | torchax Llama 3 8B v6e-8 — exp 74b tokamax-splash + max_logit_const advances frontier to 36.8 % MFU bs=3 seq=8192
+
+**Op**: run-experiment (× 7: exp 74a-f mlc sweep; exp 75a cost_estimate; exp 76a/b q_seq_shards INVALID).
+**Pages updated**: `wiki/experiments/.../2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md` (added §"Follow-up: + max_logit_const" + §"Refuted post-acceptance" + §"Final (valid) frontier"); `wiki/index.md` (program-target best advanced to 6,559/chip 36.8 %; cumulative climb 42.9 %).
+**Docker images**: hf-v36 (max_logit_const knob) → hf-v37 (cost_estimate knobs) → hf-v38 (q_seq_shards env knob).
+**Key result**: **🏆 exp 74b: tokamax-splash + base2 + fuse_recip + max_logit_const=30 @ bs=3 seq=8192 = 52,475 TPS (6,559/chip), 36.8 % MFU** — **+2.6 % per-chip** over exp 72a (6,392 / 35.8 %). Cumulative day climb: 4,591 → 6,559 = **+42.9 %**. Gap to MaxText: 7.8 pp.
+**Notes**:
+- mlc value insensitive (10 / 20 / 30 / 50 all within ±0.1 %); the win is just turning the optimization path on. Llama attention logits stay well below 10 in practice (post-`/sqrt(d_head)` scaling), so the kernel never clamps. Loss values **identical step-for-step** to exp 72a — the kernel skips a redundant softmax stabilization pass when the cap is provided. MaxText's `use_max_logit_estimate` defaults to `-1` (off) — they don't enable this for Llama either, so we found a knob they haven't enabled by default.
+- `cost_estimate_flops_fwd/bwd` (exp 75a): neutral. XLA already overlaps the splash kernel with FSDP collectives without the hint.
+- **INVALIDATED: exp 76a/b** (`q_seq_shards=2`/`q_seq_shards=4`): NaN loss from step 1 onward. q_seq_shards is meant for sequence sharding across a context-parallel mesh axis; we have no such axis. The throughput "win" (+10 %) is an artifact of NaN values short-circuiting downstream ops. Rejected.
+
+## [2026-04-26] run-experiment | torchax Llama 3 8B v6e-8 — exp 72a tokamax-shipped splash NEW PROGRAM-TARGET BEST 35.8 % MFU bs=3 seq=8192
+
+**Op**: run-experiment (× 7: exp 71a/b — broken mask API; exp 72a-d valid sweep; exp 73a-c ablations).
+**Pages created**: `wiki/experiments/.../2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md`.
+**Pages updated**: `wiki/index.md` (program-target best advanced; experiment count 16 → 17).
+**Docker images**: hf-v33 → hf-v34 (fix tokamax mask API: single mask, not MultiHeadMask) → hf-v35 (add `dq_reduction_steps` env knob).
+**Key result**: **🏆 exp 72a: tokamax-shipped splash attention with `use_base2_exp=True` + `fuse_reciprocal=True` @ bs=3 seq=8192 = 51,139 TPS (6,392/chip), 35.8 % MFU** — **+1.3 % per-chip** over the prior exp 65 frontier (jax-splash, 6,313/chip 35.4 %). Holds at +1.8 % at bs=2 and +1.2 % at bs=4. Cumulative day climb: 4,591 → 6,392 = **+39.2 % per-chip** vs morning AMP-only baseline (exp 20). Gap to MaxText 44.6 %: now 8.8 pp (was 9.2 pp).
+**Notes**:
+- Discovered by reading MaxText's `src/maxtext/layers/attention_op.py` at the `use_tokamax_splash` branch — they expose tokamax's own splash impl alongside upstream JAX's, with extra perf knobs (`use_base2_exp`, `fuse_reciprocal`, `use_experimental_scheduler`, `dq_reduction_steps`, `max_logit_const`). The first two compound super-additively.
+- **Ablations (exp 73a-c)**: `base2=T fuse_recip=F` = +0.7 %; `base2=F fuse_recip=T` = +0.8 %; both = +1.3 %. `use_experimental_scheduler=T` = -0.2 % (worse); `dq_reduction_steps=3` = +0.5 % (also worse than defaults). Optimal config = `base2=T + fuse_recip=T` only.
+- **Mechanism**: `use_base2_exp` swaps `exp(x)` for `exp2(x / ln 2)` — TPU's `exp2` is faster, the rescale fuses with the upstream multiply, mathematically identical. `fuse_reciprocal` moves the `output / lse` division inside the kernel so we save one HBM round-trip on the post-attention output buffer per layer.
+- **API note**: tokamax splash takes a single `mask` (broadcasts to heads internally), not `MultiHeadMask`. Trip-up cost one rebuild (hf-v33 → hf-v34).
+
+## [2026-04-26] run-experiment + INVALIDATION | torchax Llama 3 8B v6e-8 — splash sweep (refuted) + exp 66 series invalidated; valid frontier reverts to exp 65 at 35.4 % MFU
+
+**Op**: run-experiment (× 8: exp 67a-d splash sweep on broken stack; exp 68a-d splash sweep on valid stack) + invalidation entry.
+**Pages updated**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp62b-chunkedxla-ce-bs3-seq8k-accepted.md` (added invalidation note for exp 66 series; appended exp 67/68 sweep table); `wiki/index.md` (program-target best reverted to exp 65 with explanatory note); `wiki/log.md` (this entry).
+**Docker images**: hf-v31 (splash env-var config; built on top of broken hf-v30), hf-v32 (reinstates fp32 cast for chunked_xla; correct stack).
+**Key result**: **🏆 valid PROGRAM-TARGET BEST = exp 65: 50,502 TPS (6,313/chip), 35.4 % MFU at bs=3 seq=8192**. Cumulative day climb: 4,591 → 6,313 = +37.5 % per-chip vs morning AMP-only baseline (exp 20).
+**Notes**:
+- **Invalidation: exp 66 / 66b / 66c / 66d** (bf16-native chunked_xla — skipped the `astype(jnp.float32)` cast on the theory that chunked_xla returns grads in input dtype natively). Threw away ~+0.3 % per-chip as wins for ~30 minutes. Found wrong: chunked_xla kernel sets `dtype = x.dtype` and uses that for lse / loss_sum **accumulators** ([chunked_xla.py lines 88, 119, 127, 136, 137, 156](trainer/tokamax_lib/.../linear_softmax_cross_entropy_loss/chunked_xla.py)). With bf16 input, the inner-loop accumulators are bf16 — at magnitude ~11 (cross-entropy initial) bf16 quantum is ~0.04, accumulating across 64 V-blocks compounds. Loss output empirically plateaued at multiples of 0.0625 (`loss=11.1250 → 11.0000`) vs exp 65's clean monotone decay (`11.7681 → 11.6403` over 12 steps). Per project rule "no model-quality optimizations", invalid. Reverted in hf-v32.
+- **Splash sweep (exp 68 series)** on the valid stack confirms current config (bq=2048 bkv=1024 bq_dkv=2048 bkv_dkv=2048 fused) is optimal: bq=4096 -2.8 %, symmetric 4096/4096 -5.2 %, unfused bwd -4.5 %. The exp 8/9/10 spring autotune universal winner still holds.
+- Splash dkv bwd remains the biggest custom-call cost (10.7 % of step time per the [bottleneck observation](wiki/observations/llama3-8b-torchax-converged-stack-bottleneck-breakdown.md)). Remaining lever points: pull MaxText's attention bwd kernel (deep work); custom V-sharded CE that avoids the lm_head all-gather (custom kernel work); not many easy local wins left.
+
+## [2026-04-26] run-experiment | torchax Llama 3 8B v6e-8 — exp 65 → 66b refinement, FRONTIER ADVANCED to 35.5 % MFU bs=3 seq=8192
+
+**Op**: run-experiment (× 6: exp 64–66d).
+**Pages updated**: `wiki/experiments/.../2026-04-26-exp62b-chunkedxla-ce-bs3-seq8k-accepted.md` (added §"Follow-ups" with 7-row table); `wiki/index.md` (program-target best advanced; experiment count entry updated to read exp 62b → 66b path).
+**Docker images**: hf-v29 (chunked_xla without shard_map — refuted) → hf-v30 (chunked_xla bf16 native, no fp32 cast, shard_map kept).
+**Key result**: **🏆 exp 66b: chunked_xla + bf16 native + autotune @ bs=3 seq=8192 = 50,647 TPS (6,331/chip), 35.5 % MFU** — +0.4 % over exp 62b, +2.1 % per-chip over the prior mosaic_tpu+autotune frontier (exp 56), and **+37.8 % per-chip over the morning AMP-only baseline (exp 20)**.
+**Notes**:
+- exp 64/64b (chunked_xla *without* shard_map): -36 % per-chip; JAX auto-partition picks a far worse pattern. shard_map remains essential even for the XLA-only impl. Refuted.
+- exp 65 (autotune): +0.16 % over exp 62b. Autotune marginal but positive on chunked_xla's b/v block sizes.
+- exp 66 / 66b: skipping the fp32 input cast (the cast was only added to handle mosaic_tpu's hardcoded fp32 grad output — chunked_xla returns grads in input dtype natively) yields +0.3 %. Free win once the analysis was done.
+- Final stack: `--weights_dtype=fp32 --compute_dtype=bf16 --master_dtype=fp32 --use_splash=True --use_scan=True --use_tokamax_ce=True --tokamax_ce_impl=chunked_xla --tokamax_ce_autotune=True --batch_size=3 --seqlen=8192` plus the bf16-native-cast guard inside the trainer (set when `tokamax_ce_impl=="chunked_xla"`).
+- Profile capture for chunked_xla still pending — both attempts (exp 63, exp 62) hit GCS HTTP 403 mid-run on profile-write to `gs://tpu-pytorch-alekseyv-us-central2/{autoresearch,cache}/profiles/`. The pod's workload identity has read but not write IAM on those prefixes. TODO: either grant the role, or use a different bucket prefix (XLA cache writes to `gs://.../cache/xla/` succeed, so the bucket is OK — only the `/profiles/` subpath is wrong).
+
+## [2026-04-26] run-experiment | torchax Llama 3 8B v6e-8 — exp 62b chunked_xla CE NEW PROGRAM-TARGET BEST 35.3 % MFU bs=3 seq=8192
+
+**Op**: run-experiment (× 5: exp 62 + 62b/c/d/e). Triggered directly by the xprof bottleneck observation.
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp62b-chunkedxla-ce-bs3-seq8k-accepted.md`.
+**Pages updated**: `wiki/index.md` (program-target best advanced; experiment count 15 → 16).
+**Docker images**: hf-v28 — adds `--tokamax_ce_impl` flag (default `mosaic_tpu`, new option `chunked_xla`).
+**Key result**: **🏆 exp 62b: chunked_xla CE @ bs=3 seq=8192 = 50,424 TPS (6,303/chip), 35.3 % MFU**. +1.6 % per-chip over the prior exp 56 frontier (6,202 / 34.8 %). The same swap also lifts bs=2 to 6,214/chip 34.8 % (+2.7 %) and bs=4 to 6,161/chip 34.5 % (+2.8 %). bs=5 OOMs by 2.91 GiB — bs=4 remains the density ceiling.
+**Notes**:
+- The xprof breakdown predicted this win: tokamax CE bwd was 263 ms (6.6 %) at 21 % MXU efficiency, asymmetrically expensive vs the 36 ms fwd. The `chunked_xla` impl uses standard XLA matmuls and avoids the Pallas-recompute path. End-to-end gain landed at +1.6 % at the program-target shape; expected, validated, accepted.
+- `chunked_xla` keeps one `(B*L, V_chunk)` slice in HBM during fwd+bwd. Fits within bs=3 envelope at seq=8192; bs=5 doesn't fit (FFN intermediate hits ceiling, unrelated to CE impl).
+- Profile-write to GCS in exp 62 hit a 403 mid-run (HTTP permission). Exp 62b/c/d/e ran without profile capture and were clean. Profile bring-up TODO: get the right IAM role for the pod's workload identity to write to `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/profiles/`.
+
+## [2026-04-26] xprof-bottleneck-breakdown | torchax Llama 3 8B v6e-8 — converged-stack profile breakdown
+
+**Op**: record-observation (xprof).
+**Pages created**: `wiki/observations/llama3-8b-torchax-converged-stack-bottleneck-breakdown.md`.
+**Profile**: `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/profiles/llama3-8b-exp61b-profile-bs3/` (captured by exp 61b, a 9-step short run with profile_step=5; the autotune kernel selection is identical to exp 56's frontier, so this trace is representative of the program-target stack).
+**Key result**: per-chip per-step time at the converged stack = **3,964 ms total**; matmul (conv fusion) **46.0 %**, splash MHA fwd+dkv bwd **24.4 %**, tokamax CE fwd+bwd **7.5 %**, loop fusion (RMSNorm/silu/etc.) **13.6 %**, data formatting 3.6 %, misc 5 %. **MXU util 51.9 %, MFU 34.8 %** — gap to MaxText 44.6 % is non-matmul time + matmul-tile-utilization headroom inside conv fusion (HBM-BW util 0.54 there).
+**Notes**:
+- Tokamax CE bwd is asymmetrically expensive (263 ms ≈ 7 × the 36 ms fwd) — the mosaic-TPU bwd recomputes logit blocks; only ~21 % MXU-efficient by back-of-envelope FLOPs accounting. Worth testing `implementation="chunked_xla"` next.
+- Splash dkv bwd (423 ms = 10.7 %) is the single biggest custom-call cost; pulling in MaxText's attention bwd kernel for comparison is the deepest leverage point.
+- Loop fusion (RMSNorm + silu + residual + mul) already at 0.77 HBM-BW util — saturated; no throughput to recover at that layer.
+
+## [2026-04-26] run-experiment-batch-program-target | torchax Llama 3 8B v6e-8 — exp 51 → 55b (tokamax CE + fp32 master, NEW PROGRAM-TARGET BEST 34.6 % MFU bs=3 seq=8192)
+
+**Op**: run-experiment (× many: exp 48 → exp 56) + tokamax-CE bring-up (5 image revs) + true-AMP-master implementation + MFU-formula bug fix.
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp55b-fp32-master-tokamax-ce-bs3-seq8k-accepted.md` (this milestone).
+**Pages updated**: `wiki/index.md` (program-target status updated; experiment count 13 → 14).
+**Docker images**: hf-v18 → hf-v26 (each rev fixes one bring-up issue: skip_lm_head, absl-flags pre-mark, fp32 cast at boundary, shard_map wrap, compute_dtype, MFU divisor).
+**Key result**: **🏆 exp 55b: bs=3 seq=8192 with scan + splash + tokamax CE (shard_map'd) + fp32 master + bf16 compute = 49,427 TPS (6,178/chip), 34.6 % MFU.** +35 % per-chip TPS over exp 20 (prior program-target best at bs=1 31.6 %). The win is the tokamax mosaic-TPU `linear_softmax_cross_entropy_loss` kernel: it streams logsumexp over V blocks in VMEM, avoiding a materialized `(B*L, V)` logits tensor (~6 GiB savings), which is what unlocks bs=3 (was OOM by 6 GiB in exp 44). fp32 master is essentially free at runtime (cast fused into matmul).
+**Notes**:
+- Tokamax CE bring-up notes (5 distinct issues, see milestone page table) — most-load-bearing was the absl-flags-vs-fire-args clash and the kernel always returning fp32 grads.
+- **MFU formula bug**: `avg_step_time = total_time_after_warmup / (train_steps - warmup_steps)` divides by *planned* step count, but the wikitext loader exits early at high B → MFU inflated by `13/n_actual`. Numbers reported during the day for exp 51b (45.0 %), exp 51c (64.1 %), exp 53b (62.4 %) were artifacts of this bug. Corrected re-runs in exp 55-55c. Fix (hf-v26): `n_measured_steps` counter, divide by that.
+- True AMP master pattern: `--weights_dtype=fp32 --compute_dtype=bf16`. weights stored fp32; `_maybe_cast_weights` autocasts each weight to bf16 before `functional_call`; the cast-vjp downcasts the bf16 grad back to fp32 on the way out, so the optimizer sees fp32 grads matching its fp32 mu/nu. Strict canonical AMP — no rounding into bf16 on parameter updates.
+- bs=3 is the throughput sweet spot at seq=8192 — bs=2 / bs=4 both come in at ~6,000/chip (same MFU within ±1 pp), bs=3 hits 6,178/chip.
+- **Post-acceptance follow-ups all refuted** (see milestone page §"Follow-ups tested"): (a) recipe XLA flags neutral/-0.3 %; (b) TP=2 / FSDP=4 -14 % on v6e-8; (c) VMEM=131,072 -0.7 %; (d) `dots_saveable` and `dots_with_no_batch_dims_saveable` remat policies OOM by 42 GiB at the scan body. The frontier converged at `nothing_saveable` + autotune + tokamax CE @ bs=3 seq=8192 = 6,206/chip, 34.8 % MFU. Next direction = xprof-driven profiling.
+- Out-of-band TODO: copy the xprof trace tarball off `/tmp/llama3_profile/` on the GKE pod into `raw/profiles/2026-04-26-exp55b-fp32-master-tokamax/` before the post-run `sleep 600` expires.
+
+## [2026-04-25] run-experiment-batch-2 | torchax Llama 3 8B v6e-8 — exp 9-11 (autotune ACCEPTED 36.1% MFU; remat REJECTED)
+
+**Op**: run-experiment (×4: exp 9 + exp 10 + exp 11a/b/c) + protocol-extension (kernel-autotune-first for new shapes).
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp{9..11}-*.md` (4 pages); `raw/profiles/2026-04-25-llama3-8b-exp9-splash-autotuned/` + GCS mirror.
+**Pages updated**: `wiki/index.md` (Experiments 10 → 13; llama3-8b model status → 36.1 % MFU; gap to MaxText 8.5 pp); `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/{splash_attn.py, train.py}` — autotuned `BlockSizes` + remat patch on respective branches.
+**Branches created** (2): `v6e8-llama3-8b-torchax-20260425-{exp9-splash-autotuned-bs4, exp11-remat}`. (exp 10 used the exp 8 image without code change; ran on the exp 9 branch.)
+**Docker images**: `:hf-v3` (autotuned splash) and `:hf-v4` (`+ make_train_step with remat re-enabled`).
+**Key result**:
+- 🏆 **exp 9 ACCEPTED at 36.1 % MFU (7,225 TPS/chip, 57,799 TPS aggregate)** — exp 8's kernel-only autotune (+30 % kernel fwd+bwd) translates to +1.1 % TPS / +0.4 pp MFU end-to-end. Predicted +1.5–3.5 %; landed at low end (~half the kernel-saving converts because exp 3 was already partially overlapping attention with collectives). New program target.
+- exp 10 (kernel autotune at seq=2048/4096/8192): same universal winner pattern. At seq=8192, `block_q=2048 block_kv=1024 fused_bwd=True dkv=(2048,2048)` = 7.944 ms / layer / chip → 254 ms attention budget for a seq=8192 step — feasible if memory fits.
+- **exp 11 REJECTED at all 3 shapes**: 11a (bs=4 seq=1024) is 52 % slower than exp 9 (MFU 24.0 vs 36.1); 11b (bs=4 seq=2048) and 11c (bs=8 seq=1024) **still compile-OOM by 7+ GiB** — only 50 MiB less than exp 4 / 6 (no remat). `nothing_saveable` doesn't fix the OOM-driver, which is *not* activations.
+
+**Discovery**: `torchax.train.make_train_step`'s `remat_policy` arg is **silently ignored** — `loss = interop.gradient_checkpoint(loss, ...)` is commented out in canonical `raw/code/torchax/torchax/train.py:54`. **All baseline + exp 1-10 ran with no remat.** exp 11 re-enables it via local `_make_train_step`. Filing as a torchax upstream issue is queued.
+
+**Process retrofit**: per user direction, established the **kernel-autotune-first protocol for shape changes**: any new training shape gets a 3-min kernel-only autotune (via `tune_splash.py`) before the full training run is submitted. Documented in [exp 10](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp10-splash-autotune-multishape-potential.md).
+
+**Notes / next**: Path to fp32-master + seq=8192 program target requires (a) memory unlock — scan-over-layers (gemma4-jax exp 49-51 confirms the architectural pattern); (b) selective remat (`dots_saveable` instead of `nothing_saveable` — avoid the 52 % step-time tax we measured); (c) tokamax `LinearSoftmaxCrossEntropyLoss` — Llama 3 has no softcap, so the gemma4 jax-exp43 blocker does NOT apply; ~128 MiB / chip activation savings; (d) host-offload of mu/nu — frees ~4 GiB / chip on the way to fp32 master. Ordered by EV: scan first (the unlock), then CE, then remat policy refinement, then fp32.
+
+## [2026-04-25] run-experiment + methodology | torchax Llama 3 8B exp 8 — splash kernel-only autotune (POTENTIAL +30% kernel fwd+bwd at every shape; 3 min wall-clock)
+
+**Op**: run-experiment + methodology-bootstrap (first kernel-only experiment in this wiki).
+**Pages created**:
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp8-splash-kernel-autotune-potential.md` — full writeup.
+- `raw/profiles/2026-04-25-exp8-splash-kernel-autotune/` — `rank0.log`, `rank1.log`, `results.csv` (171 configs × 14 cols, in-tree, 110 KiB).
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/tune_splash.py` — reusable kernel-only autotune harness (~430 LOC, no extra deps beyond what's in the trainer image).
+**Pages updated**:
+- `wiki/index.md` — Experiments 9 → 10; bumped page count; updated llama3 model-status line with the new finding + queued exp 9 validation.
+- `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/README.md` — replaced stale gemma4-copy with llama3-specific contents + linked exp 8 prominently.
+**Branches created**: none (kernel-only experiment; no production code change yet — the validated change happens in exp 9).
+**Docker images**: `us-central1-docker.pkg.dev/tpu-pytorch/test/llama3-8b-torchax-container:tune-v1` (initial; had a clamping bug in the production-default anchor at seq=1024 — `block_q_dkv=2048 > seq_len=1024`); `:tune-v2` (fixed: clamp anchors with `min(global, seq_len)` to mirror production's clamping). Both layered on top of the `hf-v2` trainer image with only the new `tune_splash.py` baked in.
+
+**Key result**: First **kernel-only** experiment in the program. Sweeps splash `BlockSizes × q_layout × use_fused_bwd_kernel` for the 3 in-program shapes (seq=1024 bs=2 baseline; seq=1024 bs=4 exp 3; seq=2048 bs=2 exp 5), single TPU v6e chip, 171 configs total. **Universal winner across all 3 shapes:** `block_q=1024, block_kv=1024, q_layout=HEAD_DIM_MINOR, use_fused_bwd_kernel=True, dkv=(seq_len, seq_len)`, beating the production default in [`splash_attn.py`](experiments/llama3_8B_autoresearch_optimization/torchax/splash_attn.py) by **+30.1 % to +32.4 % on fwd+bwd kernel time**, **+14.9 % to +16.4 % on fwd alone**. Production has `block_kv=512` (asymmetric, stale carryover from an older MaxText recipe) and `use_fused_bwd_kernel=False` — both wrong for these shapes. The autotune-best matches the current MaxText Llama 3.1-8B recipe within 0.2 %, independently confirming that recipe applies cleanly here. End-to-end TPS impact bounded by attention's share of step time: at seq=1024 ≈8 % share ⇒ expected +2.4 % step time ⇒ +2.4 % TPS; at seq=2048 ≈12 % share ⇒ expected +3.5 % TPS. Validation queued as exp 9 (full XPK training run with the autotune-best config).
+
+**Methodological finding (the bigger one)**: end-to-end wall-clock for the 3-shape 171-config sweep was **3 minutes**. The equivalent set of full XPK training runs to test the same hypotheses one-by-one would be ~45-90 min wall-clock (15 min/run × 3-6 representative configs per shape × 3 shapes), and would resolve sub-2 % deltas as noise. Cross-host validation (rank 0 vs rank 1 timed independently on different chips of the same v6e-8 slice) showed **0.04-0.21 % agreement on best-config ms** — measurement noise floor far below the 30 % gain. Pattern to emulate: 1) build focused harness using upstream JAX kernels directly (rather than reusing tokamax + tune_jax — porting risk for direct applicability + 2 extra deps); 2) gate phase 2 on top-k from phase 1 to bound the search; 3) anchor every sweep with the production default + a public reference recipe so deltas are interpretable.
+
+**Decision audit — build vs reuse**:
+- [tokamax `splash_attention_benchmarking.py`](codebases/tokamax.md) — has a working harness with grid + xprof-event-filtered timing via `tune_jax`; rejected because tokamax has a *vendored* fork of splash that may differ from the upstream JAX path our model uses, and `tune_jax` is an extra pip dep. Borrowed the grid layout idea + `randn_init` pattern.
+- [marin/levanter autotune harness](codebases/marin.md) — *in-graph* autotune cache for kernel selection at training time; wrong shape for this task (we want a standalone benchmark). Listed as the index-headline pattern to emulate for *future* in-trainer autotune (TBD when scope warrants).
+- [maxtext splash kernel](codebases/maxtext.md) — has a frozen production splash wrapper but no autotune harness; consulted only for the recipe values used as the second anchor.
+
+**Next hypotheses generated** (queued in the experiment page):
+1. **Exp 9 — full-training validation of the autotune-best splash config** on top of exp 5 (seq=2048 trunk). One-line code change in [`splash_attn.py:42-53`](experiments/llama3_8B_autoresearch_optimization/torchax/splash_attn.py). Highest-priority follow-up. Effort: S.
+2. **Exp 10 — autotune at seq=8192** (program target shape). Same harness, `--seq_len 8192 --batch_size 1`. At seq=8192 attention is ~25 % of step time, so 30 % kernel win ⇒ +7-8 % TPS. Effort: S.
+3. **Exp 11 — combine autotune-best splash + bs=4 / seq=8192** (after exp 9). Test whether `use_fused_bwd_kernel=True` frees activation memory enough to unlock previously-OOM batch/seq combos.
+4. **Phase-3 dq decoupling** — only if any future shape has a competitive `fused_bwd=False` row. In this run every non-fused config was strictly dominated. Defer.
+5. **Promote `tune_splash.py` to a generic Pallas kernel autotune harness** for future kernels (RMSNorm Pallas re-attempt, fused softcap+CE, etc). Captured as a methodology line in the experiment README.
+
+**Notes** — bug found in iteration 1 (image `tune-v1`): the `production_default_full()` config in the harness used the literal `block_q_dkv=2048` value from `splash_attn.py`, but production *clamps* with `min(2048, seq_len)` at runtime. At `seq_len=1024` the harness threw `q_block_size=2048 should divide q_seq_len=1024`. Fix in `tune-v2`: thread `seq_len` into anchor constructors and clamp consistently. **Process retrofit**: when porting production code into a benchmark harness, include the clamp/min logic that ships with the production wrapper, not just the literal constants. Workload `llama3-splash-tune-20260425-191044` (`tune-v2`) succeeded end-to-end in 100 s + image pull/init. The earlier `llama3-splash-tune-20260425-190746` (`tune-v1`) was deleted after seq=1024 sweep failed at the bug above; ~2 min lost.
+
+---
+
+## [2026-04-25] run-experiment-batch | torchax Llama 3 8B v6e-8 — 7 experiments, splash+bs=4 ACCEPTED (35.7% MFU, +12.8 pp)
+
+**Op**: run-experiment (×7) + formulate-hypothesis (×1) + protocol-update (program.md branch convention).
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-exp{1..7}-*.md` (7 experiment pages); `wiki/hypotheses/llama3-torchax-xla-recipe-flags.md` (hypothesis page); `raw/profiles/2026-04-25-llama3-8b-exp3-splash-bs4/` + `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-25-llama3-8b-exp3-splash-bs4/` (winner profile, both ranks); `raw/profiles/2026-04-25-llama3-8b-exp5-splash-seq2k/` + GCS mirror.
+**Pages updated**: `wiki/index.md` (Experiments 4 → 9; llama3-8b model status → 35.7 % MFU); `wiki/experiments/llama3_8B_autoresearch_optimization/program.md` (added "Experiment branch" binding row — convention `v6e8-llama3-8b-torchax-<YYYYMMDD>-exp<NN>-<short-slug>`); `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/train.py` (added `--use_splash` flag + `env.override_op_definition(F.scaled_dot_product_attention, …)` canonical splash wiring on the splash-using branches).
+**Branches created** (8): `v6e8-llama3-8b-torchax-20260425-{baseline, exp1-xla-recipe-flags, exp2-splash-bs2, exp3-splash-bs4, exp4-splash-bs8, exp5-splash-seq2k, exp6-splash-bs4-seq2k, exp7-splash-xla-bs4}`.
+**Docker images**: `us-central1-docker.pkg.dev/tpu-pytorch/test/llama3-8b-torchax-container:hf-v1` (baseline + exp1; no splash) and `:hf-v2` (exp2-exp7; splash override).
+**Key result**: **exp 3 (splash + bs=4) ACCEPTED** — 57,154 TPS aggregate (7,144/chip), 35.7 % MFU at `bs=4 seq=1024 fsdp=8` on v6e-8. **+55.6 % TPS, +12.8 pp MFU vs baseline.** Mechanism: splash makes attention activation `O(L)` which frees enough HBM that `bs=4` fits (it OOM'd by 1 GiB on the no-splash baseline); the doubled per-chip token count amortizes non-attention compute across 2× the work, lifting per-token MFU. Splash itself at `bs=2` (exp 2) is +1.6 % within noise — it is the precondition, not the wing.
+
+**Ranking by verdict**:
+- 🏆 exp 3 splash+bs=4 = **35.7 % MFU** — accepted (current target).
+- exp 5 splash+seq=2048 = 34.0 % MFU — accepted (alternate path to seq=8192).
+- exp 7 splash+xla-flags = 35.0 % MFU — refuted (flags don't help at this density).
+- exp 2 splash@baseline = 23.3 % MFU — potential (precondition only).
+- exp 6 splash+bs=4+seq=2048 = compile OOM — invalid.
+- exp 4 splash+bs=8 = compile OOM 7.36 GiB — invalid.
+- exp 1 xla-flags@baseline = 22.6 % MFU — refuted.
+
+**Notes**: New durable heuristic captured: **MaxText recipe XLA flags require per-chip B·L ≳ ~10,000 to pay for themselves** (recipe is bs=3 seq=8192 = 24,576; we are at 4,096). At lower B·L, FSDP all-gather is already fully hidden behind compute and the flags are no-ops. Compile time penalty is +6–17 s. Don't enable speculatively until compute density justifies.
+
+**OOM mechanism — bs=8 and bs=4-seq=2048 both crash** because splash compresses attention activations (`O(L²)` → `O(L)`) but not the FFN intermediate `[B, L, 14336]` which is the largest bf16 activation in the train graph. Both OOMs converge on the same path forward: **selective remat that recomputes the FFN intermediate** (`save_only_these_names = {hidden_state}`-style), or **scan-over-layers** to share the FFN intermediate buffer across all 32 layers (also ~32× compile-time reduction). Queued as next experiments.
+
+**Compile cache write permission denied** persists on the gcsfuse `/data/cache/xla` mount — every run cold-compiles 70-110 s. Investigated to gcsfuse mount config (UID mismatch — pod cannot write the bucket). First fix attempt: switch to `/tmp` + post-run sync script (queued).
+
+**Process retrofit**: per user direction, established the **per-experiment branch convention**: `v6e8-llama3-8b-torchax-<YYYYMMDD>-exp<NN>-<short-slug>` (or `…-baseline`). Each branch holds the exact `train.py` + `model/` + `data.py` state used for that run plus the experiment page; even env-only experiments get a branch. Documented in `program.md`. Backfilled all 7 experiments (today's batch) onto their respective branches.
+
+**Gap to MaxText reference (44.6 % MFU)**: 8.9 pp remaining. Most likely sources (in order): (a) compute density — MaxText recipe is bs=3 seq=8192, B·L = 24,576 vs our 4,096; selective remat / scan + bs=4 seq=8192 would close most of this. (b) framework overhead — JittableModule + torchax interop vs MaxText's pure-JAX hand-tuned graph; +1–3 pp at most. (c) kernel choice / scheduler — minor.
+
+
+
+**Op**: run-experiment.
+**Pages created**: `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-25-baseline.md`; `raw/profiles/2026-04-25-llama3-8b-baseline/` (mirror of GCS, 668 MiB, both ranks); `gs://tpu-pytorch-alekseyv-us-central2/autoresearch/2026-04-25-llama3-8b-baseline/`.
+**Pages updated**: `wiki/index.md` (Models entry for llama3-8b updated with torchax baseline; Experiments count 2→3; total page count bumped); `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/{train.py, Dockerfile, DEPLOY.md, model/, data.py, helper.py, splash_attn.py}` — full restructure of the trainer code per the program README requirements (HF `LlamaForCausalLM` + `model/` re-export package + `data.py` wikitext loader + canonical-pattern `train.py` from `raw/code/torchax/examples/train_llama_torchtitan/` + Dockerfile + generic GKE-deployment guide).
+**Key result**: First end-to-end run of the HuggingFace-`transformers`-based Llama 3 8B torchax trainer on multi-host GKE. Local v6e-4 single-host (5,450 tok/s/chip, MFU 27.2 %) and v6e-8 multi-host **(canonical: 36,729 tok/s = 4,591 tok/s/chip, MFU 22.9 % at bs=2 seq=1024 fsdp=8)** both stable at steady state. Multi-host −16 % per-chip vs local — the FSDP collective tax across the 2-host slice is the first optimization target. MFU formula switched from rough `6N · tokens` to the MaxText `calculate_tflops_training_per_device` per-component formula (qkv + o_proj + ffn + lm_head + causal-attn, ×3 for fwd+2·bwd), which drops the embedding-table flops since lookup is gather not matmul. Verdict: `supported`.
+**Notes**: Significant infrastructure work — from-scratch rewrite of the trainer using the canonical torchax pattern (`sharded_device_put`, `create_sharded_weights` with `make_array_from_callback`, `JittableModule`, `torchax.train.make_train_step`, `helper.compile_step_func` with `donate_argnums + cost analysis`, `axis_types=(Auto, Auto)` mesh). The torchtitan-shape canonical does not work on HF Llama directly without three fixes documented in the experiment page: (1) **buffer materialization** for HF's `model.rotary_emb.{inv_freq, original_inv_freq}` (meta-init leaves them unmaterialized; `interop.jax_view` crashes); (2) **opt_state count-scalar replication** — optax `adamw`'s `count` 0-d int32 lands on device-0 only and collides with `compile_step_func`'s out_shardings; walk the pytree post-init and `jax.device_put`-replicate any leaf whose device set is smaller than the mesh; (3) **batch=4 OOM** at compile (4 GiB over on v6e-4, 1.05 GiB over on v6e-8), so canonical baseline is bs=2. **Compile cache write permission denied** on the gcsfuse `/data/cache/xla` mount (PermissionError — pod's UID can't write the bucket); JAX falls through but no warm-cache reuse, so every run cold-compiles ~92 s — first follow-up hypothesis. New stack folder `wiki/experiments/llama3_8B_autoresearch_optimization/torchax/` already existed (it housed the earlier torchtitan-based trainer); this run replaces all torchax code top-to-bottom with the HF-based version. Image rebuilt + pushed: `us-central1-docker.pkg.dev/tpu-pytorch/test/llama3-8b-torchax-container:hf-v1`. Next priority: hypothesis #1 (compile-cache fix → 82 s/run saved); then splash attention (#2); then batch=4 (#3) and async-collective flags (#4). 7 follow-up hypotheses listed inline in the experiment page; convert to standalone hypothesis pages before scheduling.
+
+## [2026-04-25] run-experiment | MaxText Gemma 4 E4B v6e-8 baseline (SUPPORTED-as-approximation, 282.9 TFLOP/s/device, 30.8% MFU)
+
+**Op**: run-experiment.
+**Pages created**: `wiki/experiments/gemma4_autoresearch_optimization/maxtext/{README.md, experiments/README.md, experiments/2026-04-25-maxtext-gemma4-e4b-v6e8-baseline.md}`; `raw/profiles/2026-04-25-maxtext-gemma4-e4b-v6e8-baseline/` (mirror of GCS, ~133 MiB; canonical at `gs://tpu-pytorch-alekseyv-us-central2/maxtext/v6e8-20260425-02-gemma4-e4b/ale-gemma4-e4b-mt-5/`); `/mnt/disks/persist/maxtext-main/src/maxtext/configs/models/gemma4-e4b.yml` (NEW wiki-local model config — no upstream equivalent exists).
+**Pages updated**: `wiki/experiments/gemma4_autoresearch_optimization/README.md` (added maxtext stack pointer); `/mnt/disks/persist/maxtext-main/src/maxtext/configs/types.py:239` (1-line literal-whitelist patch — required so Pydantic accepts `model_name=gemma4-e4b`).
+**Key result**: First-ever MaxText Gemma 4 E4B-shape run on Trillium v6e-8: **282.9 TFLOP/s/device, 10,003 Tokens/s/device, 30.8% per-chip MFU** at `bs=2, seq=8192, fsdp=8, remat_policy=full`, aggregate ~80k tok/s across 8 chips. Compile fits at 22.51 GiB / 31.25 GiB HBM. **APPROXIMATION** — HF E4B's `num_kv_shared_layers=18` (last 18 layers reuse K/V from earlier same-type layers) is not implemented by MaxText's `gemma4` decoder_block; the run has +47M extra k/v projection params (~0.6% over true E4B). Throughput is a measurement of the dense-shape model that this config builds, not directly comparable to a true E4B implementation.
+**Notes**: Substantial infrastructure work — Gemma 4 support landed on MaxText `main` after `tpu-recipes-v0.1.4` (we ran Llama-8B against v0.1.4 earlier today; for E4B we had to switch to `main` @ `532c8b3d8` and rebuild `maxtext_base_image` from scratch (1.77 GiB, py3.12 base, ~5 min build incl. 2-min layer export)). Five workload submissions: -mt-1 hit Pydantic literal_error (model_name not whitelisted), -mt-2 same error (PYTHONPATH issue — base image had editable install at `/deps/src` that overrode xpk's `/app/src` COPY; fixed with `PYTHONPATH=/app/src` in user_command), -mt-3 hit "Unknown command line flag '2a886c8_chip_config_name'" (newer libtpu rejected one of the Llama-recipe LIBTPU_INIT_ARGS flags; stripped to just `--xla_tpu_scoped_vmem_limit_kib=98304`), -mt-4 OOM at compile (`bs=4 seq=8192` with `remat=full` doesn't fit — FFN intermediate `bf16[4,8192,10240]` × ~20 buffers = 13+ GiB live), -mt-5 succeeded at `bs=2`. **MFU is 13.8 pp lower than the same-day Llama-3.1-8B baseline (44.6%)** — drivers: smaller compute density, `remat=full` overhead, missing recipe-tuned XLA flags. Item 1 in next-hypotheses queue is to port the LIBTPU_INIT_ARGS set (minus version-rejected flag). Hybrid attention pattern (5 SW + 1 GLOBAL × 7 cycles) drives both more compile time (~50 s HLO compile vs Llama's ~12 s) and a ~4× larger xplane trace (133 vs 31 MiB) since each cycle compiles distinct kernels. Loss flat (12.97-12.98 over 20 steps, synthetic data — no real signal at this scale; ln(262144) = 12.477 is the uniform-vocab baseline; the slight excess reflects synthetic-data variance not a broken model). Workload `ale-gemma4-e4b-mt-5` cleaned up after run.
+
 ## [2026-04-25] run-experiment | MaxText Llama3.1-8B v6e-8 reference baseline (SUPPORTED, 409.4 TFLOP/s/device, 44.6% MFU)
 
 **Op**: run-experiment.

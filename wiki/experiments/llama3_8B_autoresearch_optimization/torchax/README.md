@@ -1,6 +1,6 @@
-# torchax code — Llama 3 8B E4B autoresearch
+# torchax code — Llama 3 8B autoresearch
 
-Working scripts, notebooks, and configs for running **Llama 3 8B E4B via torchax** (PyTorch-on-JAX) on TPU. This is the **primary** execution path for the program — Llama 3 8B ships as a PyTorch model, and torchax carries it to TPU with minimal code changes.
+Working scripts, notebooks, and configs for running **Llama 3 8B via torchax** (PyTorch-on-JAX) on TPU. This is the **primary** execution path for the program — Llama 3 8B ships as a PyTorch model, and torchax carries it to TPU with minimal code changes.
 
 Companion folder: [`../jax/`](../jax/README.md) — native-JAX port (secondary, lit-up once the torchax baseline is stable and a native port becomes a hypothesis).
 
@@ -16,7 +16,7 @@ Companion folder: [`../jax/`](../jax/README.md) — native-JAX port (secondary, 
 ```
 torchax/
   README.md              this file
-  train.py               Llama 3 8B E4B fine-tune trainer (UNTESTED scaffold)
+  train.py               Llama 3 8B fine-tune trainer (UNTESTED scaffold)
   config.yaml            default args for train.py (CLI overrides)
   requirements.txt       pip install targets (jax[tpu], transformers @ main, ...)
   data.py                wikitext loader + fixed-length packer
@@ -90,6 +90,9 @@ Full list: `python -m train --help` (from this folder).
 | `--dp` / `--tp` | `1` / `1` | Only used with `--strategy tp`. Require `dp × tp == jax.device_count()`. |
 | `--dtype` | `bf16` | `bf16` flips `torchax.enable_performance_mode()`; `fp32` flips `enable_accuracy_mode()`. |
 | `--profile_dir` + `--profile_steps` | unset | Capture an xprof trace for the listed step indices. |
+
+Target seq_len: 8k
+Target dtype: fp32
 
 ### Reporting output
 

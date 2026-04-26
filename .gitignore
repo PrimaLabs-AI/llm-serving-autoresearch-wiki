@@ -212,6 +212,11 @@ __marimo__/
 # .gitkeep so relative links don't break.
 raw/profiles/*
 !raw/profiles/.gitkeep
+# Exception: kernel-only autotune artifacts (CSV + small stdout logs) are
+# small enough to track and are the canonical persistent record of those
+# runs (no xprof trace is captured for kernel-only sweeps).
+!raw/profiles/*-kernel-autotune/
+!raw/profiles/*-kernel-autotune/**
 
 # Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
 # Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`
