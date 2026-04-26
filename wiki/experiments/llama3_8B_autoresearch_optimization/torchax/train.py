@@ -33,6 +33,18 @@ try:
 except ImportError:
     pass
 
+# tokamax/_src/config.py reads sys.argv via `flags.FLAGS(sys.argv)` on first
+# config-option access, but this trainer uses `fire.Fire` (so sys.argv carries
+# `--model_id=...` etc., which absl flags doesn't recognize). Pre-parse absl
+# with only argv[0] so tokamax's `is_parsed()` short-circuits.
+try:
+    import sys as _sys
+    from absl import flags as _absl_flags
+    if not _absl_flags.FLAGS.is_parsed():
+        _absl_flags.FLAGS([_sys.argv[0]])
+except Exception:
+    pass
+
 import fire
 import jax
 import jax.numpy as jnp
@@ -165,7 +177,15 @@ def main(
     tp_parallelism: int = 1,
     learning_rate: float = 1e-5,
     weight_decay: float = 0.0,
-    weights_dtype: str = "bf16",  # bf16|fp32 (program target = fp32 long-term)
+    weights_dtype: str = "bf16",  # bf16|fp32. Storage dtype of model params and
+                                  # optimizer mu/nu (per `master_dtype`). For true
+                                  # AMP master, set weights_dtype=fp32 and
+                                  # compute_dtype=bf16 — weights are stored fp32
+                                  # but cast to bf16 inside `model_fn` for compute.
+    compute_dtype: str = "match", # bf16|fp32|match. "match" = compute uses
+                                  # weights_dtype (no autocast). "bf16" with
+                                  # weights_dtype=fp32 enables true mixed-precision:
+                                  # fp32 master weights, bf16 forward/backward.
     use_real_data: bool = True,   # True=wikitext, False=random tokens (perf smoke only)
     use_splash: bool = False,     # True = override torch.nn.functional.scaled_dot_product_attention
                                   # with the canonical TPU splash-attention kernel.
@@ -187,10 +207,25 @@ def main(
                                   # standard mixed-precision pattern: fp32 master
                                   # for the optimizer step, smaller dtype for the
                                   # forward/backward.
+    scan_remat_policy: str = "nothing_saveable",  # nothing_saveable | dots_saveable
+                                  # | dots_with_no_batch_dims_saveable | save_anything_except_these_names
+                                  # Policy for the scan body's gradient checkpoint.
+                                  # Default `nothing_saveable` recomputes everything on bwd
+                                  # (max memory savings); `dots_saveable` saves matmul
+                                  # outputs (less bwd compute, some memory cost).
     use_tokamax_ce: bool = False, # True = use tokamax.linear_softmax_cross_entropy_loss
                                   # which streams logsumexp over V via Pallas
                                   # (mosaic_tpu impl). Skip lm_head materialization
                                   # → ~256 MiB/chip activation savings at seq=8192.
+    tokamax_ce_impl: str = "mosaic_tpu",  # mosaic_tpu | chunked_xla | xla. The
+                                  # `chunked_xla` impl chunks (B*L, V) into pieces
+                                  # using XLA matmuls (no Pallas); `mosaic_tpu` is the
+                                  # streamed-V Pallas kernel (current frontier);
+                                  # `xla` materializes full logits (OOMs at this shape).
+    tokamax_ce_autotune: bool = False, # True = autotune CE kernel block sizes
+                                  # (cache-miss fallback = "autotune"). Runs all
+                                  # configs in _get_autotuning_configs and picks
+                                  # fastest. Adds compile time on first call.
     profile_dir: str | None = None,
     profile_step: int = 5,
 ):
@@ -222,11 +257,12 @@ def main(
     with torch.device("meta"):
         if use_scan:
             from model.scan import LlamaForCausalLMScan
+            _ck_policy = getattr(jax.checkpoint_policies, scan_remat_policy)
             model = LlamaForCausalLMScan(
                 _load_config(model_id),
-                checkpoint_policy=jax.checkpoint_policies.nothing_saveable)
-            print("[scan] LlamaForCausalLMScan installed (32 layers stacked into "
-                  "1 scan body)", flush=True)
+                checkpoint_policy=_ck_policy)
+            print(f"[scan] LlamaForCausalLMScan installed (32 layers stacked into "
+                  f"1 scan body), checkpoint_policy={scan_remat_policy}", flush=True)
         else:
             model = LlamaForCausalLM.from_pretrained(
                 model_id, torch_dtype=torch_dtype,
@@ -338,6 +374,21 @@ def main(
     env = torchax.default_env()
     jittable_mod = JittableModule(model)
 
+    # AMP master-weight pattern: weights stored at `weights_dtype` (typically
+    # fp32), forward/backward compute uses `compute_dtype` (typically bf16).
+    # Cast each weight to compute_dtype inside model_fn — JAX's `astype` vjp
+    # downcasts the bf16 grad back to fp32 on the way out, so the optimizer
+    # sees fp32 grads matching its fp32 mu/nu and fp32 master weights.
+    _torch_compute_dtype = None
+    if compute_dtype != "match" and compute_dtype != weights_dtype:
+        _torch_compute_dtype = {"bf16": torch.bfloat16, "fp32": torch.float32}[compute_dtype]
+        print(f"[amp] true mixed-precision: storage={weights_dtype} compute={compute_dtype} "
+              f"(weights cast to {compute_dtype} inside model_fn)", flush=True)
+    def _maybe_cast_weights(weights):
+        if _torch_compute_dtype is None:
+            return weights
+        return {k: v.to(_torch_compute_dtype) for k, v in weights.items()}
+
     if use_tokamax_ce:
         # Skip lm_head — return hidden_states only. Loss path applies tokamax
         # `linear_softmax_cross_entropy_loss` (Pallas mosaic_tpu) over flat
@@ -352,38 +403,80 @@ def main(
         # Easiest: monkey-patch lm_head to identity at use time.
         if not use_scan:
             raise RuntimeError("use_tokamax_ce currently requires use_scan=True")
-        # Replace lm_head with Identity so jittable_mod.functional_call("forward")
-        # returns hidden_states pre-projection.
-        _orig_lm_head = model.lm_head
-        model.lm_head = torch.nn.Identity()
-        # Stash the lm_head weight in a place the loss closure can access.
-        # `model.lm_head_weight_ref` lives on model so JittableModule's
-        # extract_all_buffers picks it up (it's a torchax tensor).
-        model.lm_head_weight_ref = _orig_lm_head.weight  # type: ignore[attr-defined]
+        # Just toggle the model's `skip_lm_head` flag — `lm_head.weight`
+        # remains the canonical key in jittable_mod.params.
+        model.skip_lm_head = True  # type: ignore[attr-defined]
         print("[ce] tokamax.linear_softmax_cross_entropy_loss enabled "
-              "(lm_head bypassed; weight reattached as buffer)", flush=True)
+              "(skip_lm_head=True; lm_head.weight will be referenced from "
+              "weights dict)", flush=True)
 
+        # Approach: compute the entire loss inside the function we wrap with
+        # value_and_grad, so we can directly close over `weights` to read
+        # lm_head.weight (the un-projected logit head). model_fn is a no-op
+        # passthrough that returns hidden_states; the real CE happens here.
         def model_fn(weights, buffers, args):
-            out = jittable_mod.functional_call("forward", weights, buffers, args)
-            return out  # hidden states (B, L, H)
+            return jittable_mod.functional_call(
+                "forward", _maybe_cast_weights(weights), buffers, args)  # (B, L, H)
 
-        def loss_fn(hidden, labels):
-            # hidden: torchax (B, L, H). lm_head weight is in buffers.
-            B, L, H = hidden.shape
+        from jax.experimental.shard_map import shard_map as _shard_map
+
+        def loss_fn(hidden, labels, weights):
+            B, L, H = hidden.shape  # global B*L (logical shape pre-shard)
             BL = B * L
             h_flat = hidden.reshape(BL, H)
             l_flat = labels.reshape(BL)
-            # lm_head_weight_ref shape (V, H); tokamax wants (H, V).
-            w_VH = jittable_mod.buffers["lm_head_weight_ref"]
+            # canonical key: lm_head.weight (since model.lm_head is unchanged
+            # but model.skip_lm_head=True bypasses the projection in forward).
+            if "lm_head.weight" in weights:
+                w_VH = weights["lm_head.weight"]
+            else:
+                raise KeyError(
+                    f"lm_head.weight not in weights. Available: "
+                    f"{list(weights.keys())}")
             w_HV = w_VH.transpose(0, 1)
-            # Convert to jax for tokamax (it's a JAX op).
             jh, jl, jw = torchax.interop.jax_view((h_flat, l_flat, w_HV))
-            jloss = _tokamax.linear_softmax_cross_entropy_loss(
-                jh, jl, jw, reduction="mean", implementation="mosaic_tpu")
+            # Cast inputs to fp32 for BOTH impls. mosaic_tpu needs it for the
+            # hardcoded fp32 grad output (the cast-vjp downcasts the bf16
+            # grad on the way back). chunked_xla also needs it: its kernel
+            # accumulates `lse` and `loss_sum` in `x.dtype`, so bf16 input
+            # collapses the loss to bf16 quantization (~0.06 resolution at
+            # magnitude ~11) — exp 66 series had loss=11.0000 plateaus. Cost
+            # of the cast is ~negligible (one extra kernel; both inputs are
+            # already in HBM at this point).
+            jh32 = jh.astype(jnp.float32)
+            jw32 = jw.astype(jnp.float32)
+
+            # All Pallas + XLA tokamax CE impls go through the shard_map
+            # wrapper. Even chunked_xla loses ~36 % per-chip without it
+            # (exp 64 — JAX auto-partition picks a far worse pattern).
+            if False:
+                jloss = _tokamax.linear_softmax_cross_entropy_loss(
+                    jh32, jl, jw32, reduction="mean",
+                    implementation=tokamax_ce_impl)
+            else:
+                # mosaic_tpu / xla via shard_map (Pallas kernels can't auto-partition).
+                def _ce_local(h, l, w):
+                    if tokamax_ce_autotune:
+                        with _tokamax.config.autotuning_cache_miss_fallback("autotune"):
+                            local_sum = _tokamax.linear_softmax_cross_entropy_loss(
+                                h, l, w, reduction="sum", implementation=tokamax_ce_impl)
+                    else:
+                        local_sum = _tokamax.linear_softmax_cross_entropy_loss(
+                            h, l, w, reduction="sum", implementation=tokamax_ce_impl)
+                    return jax.lax.psum(local_sum, axis_name="fsdp")
+                ce_sm = _shard_map(
+                    _ce_local, mesh=mesh,
+                    in_specs=(P("fsdp", None), P("fsdp"), P()),
+                    out_specs=P(),
+                    check_rep=False,
+                )
+                global_sum = ce_sm(jh32, jl, jw32)
+                jloss = global_sum / float(BL)
             return torchax.interop.torch_view(jloss)
     else:
         def model_fn(weights, buffers, args):
-            out = jittable_mod.functional_call("forward", weights, buffers, args)
+            out = jittable_mod.functional_call(
+                "forward", _maybe_cast_weights(weights), buffers, args)
             # HF returns CausalLMOutputWithPast; under torchax, attribute access works.
             # LlamaForCausalLMScan returns the logits tensor directly.
             if isinstance(out, torch.Tensor):
@@ -422,10 +515,33 @@ def main(
         return leaf
     opt_state = torch_view(jax.tree.map(_fix_leaf_sharding, _opt_state_raw))
 
-    train_step = torchax.train.make_train_step(
-        model_fn, loss_fn, optimizer,
-        remat_policy=jax.checkpoint_policies.nothing_saveable,
-    )
+    if use_tokamax_ce:
+        # Local make_train_step that threads `weights` through loss_fn (canonical
+        # torchax.train.make_train_step only passes (res, label) to loss_fn). The
+        # tokamax-CE path needs `weights["lm_head.weight"]` inside the loss.
+        def _make_train_step_with_weights(model_fn_in, loss_fn_in, optax_optimizer):
+            env_local = torchax.default_env()
+            def _loss(weights, buffers, args, label):
+                with env_local, jax.named_scope("compute_loss"):
+                    res = model_fn_in(weights, buffers, args)
+                    return loss_fn_in(res, label, weights)
+            grad_fn = torchax.interop.jax_value_and_grad(_loss)
+            def step(weights, buffers, opt_state, args, label):
+                with jax.named_scope("compute_gradient"):
+                    loss_v, gradient = grad_fn(weights, buffers, args, label)
+                with jax.named_scope("optimizer_updates"):
+                    updates, opt_state = torchax.interop.call_jax(
+                        optax_optimizer.update, gradient, opt_state, weights)
+                    weights = torchax.interop.call_jax(
+                        optax.apply_updates, weights, updates)
+                return loss_v, weights, opt_state
+            return step
+        train_step = _make_train_step_with_weights(model_fn, loss_fn, optimizer)
+    else:
+        train_step = torchax.train.make_train_step(
+            model_fn, loss_fn, optimizer,
+            remat_policy=jax.checkpoint_policies.nothing_saveable,
+        )
 
     x_sharding = NamedSharding(mesh, P("fsdp"))
 
@@ -433,6 +549,7 @@ def main(
     warmup_steps = 2
     total_tokens_after_warmup = 0
     total_time_after_warmup = 0.0
+    n_measured_steps = 0
 
     with mesh:
         for i, (inputs, labels) in enumerate(loader):
@@ -474,11 +591,12 @@ def main(
             if i >= warmup_steps:
                 total_tokens_after_warmup += tokens_this_step
                 total_time_after_warmup += dt
+                n_measured_steps += 1
 
     if total_time_after_warmup > 0:
         avg_tps = total_tokens_after_warmup / total_time_after_warmup
         per_chip = avg_tps / n_global
-        avg_step_time = total_time_after_warmup / (train_steps - warmup_steps)
+        avg_step_time = total_time_after_warmup / n_measured_steps
         peak = 918e12  # v6e bf16 peak ≈ 918 TFLOPS / chip.
         # MaxText-style train-step TFLOPs (forward + 2× backward = ×3) for a
         # dense GQA Llama. Dropped: MoE / MLA / engram / vision / DPO / MTP.
@@ -507,7 +625,7 @@ def main(
         print("\n================ summary ================", flush=True)
         print(f"global_batch          : {global_batch}", flush=True)
         print(f"seqlen                : {seqlen}", flush=True)
-        print(f"steps measured        : {train_steps - warmup_steps}", flush=True)
+        print(f"steps measured        : {n_measured_steps}", flush=True)
         print(f"avg throughput        : {avg_tps:.0f} tok/s "
               f"({per_chip:.0f}/chip)", flush=True)
         print(f"approx MFU            : {mfu*100:.1f}% (v6e bf16 peak)", flush=True)

@@ -76,6 +76,10 @@ class LlamaForCausalLMScan(torch.nn.Module):
 
         wrapped = [_WrappedDecoderLayer(l) for l in orig.model.layers]
         self.scanned_layers = torchax.train.ScannedModule(wrapped, checkpoint_policy)
+        # If True, `forward` returns hidden_states pre-projection (the loss
+        # path will apply lm_head + softmax + CE in a single fused kernel
+        # via tokamax.linear_softmax_cross_entropy_loss).
+        self.skip_lm_head = False
 
     def forward(self, input_ids):
         hidden = self.embed_tokens(input_ids)
@@ -85,6 +89,8 @@ class LlamaForCausalLMScan(torch.nn.Module):
         cos, sin = self.rotary_emb(hidden, position_ids=position_ids)
         hidden = self.scanned_layers(hidden, cos, sin)
         hidden = self.norm(hidden)
+        if self.skip_lm_head:
+            return hidden
         return self.lm_head(hidden)
 
 

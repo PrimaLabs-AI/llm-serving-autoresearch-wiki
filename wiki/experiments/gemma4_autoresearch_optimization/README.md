@@ -43,7 +43,7 @@ Individual experiments for this program live as dated files in **this folder**: 
 
 ## How to run
 
-Scripts live in [`torchax/`](torchax/README.md) (primary) and [`jax/`](jax/README.md) (secondary). The runbook below reproduces the [2026-04-22 baseline](torchax/experiments/2026-04-22-baseline.md).
+Scripts live in [`torchax/`](torchax/README.md) (primary), [`jax/`](jax/README.md) (secondary, native-JAX port), and [`maxtext/`](maxtext/README.md) (reference baseline — runs upstream MaxText with a wiki-local `gemma4-e4b.yml` config since MaxText doesn't ship one). The runbook below reproduces the [2026-04-22 baseline](torchax/experiments/2026-04-22-baseline.md). For the current MaxText E4B-shape number on v6e-8 see [maxtext/experiments/2026-04-25-maxtext-gemma4-e4b-v6e8-baseline.md](maxtext/experiments/2026-04-25-maxtext-gemma4-e4b-v6e8-baseline.md) (**282.9 TFLOP/s/device, 10,003 TPS, 30.8 % MFU; approximation — see caveat**).
 
 ### Prerequisites
 
