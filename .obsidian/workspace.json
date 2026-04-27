@@ -179,6 +179,8 @@
   },
   "active": "81b05cd2d3f4645c",
   "lastOpenFiles": [
+    "wiki/index.md.tmp.106074.1777256253105",
+    "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md.tmp.106074.1777256221921",
     "wiki/index.md.tmp.106074.1777240729332",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md.tmp.106074.1777240680146",
@@ -189,8 +191,6 @@
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/train.py.tmp.106074.1777224670884",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/train.py.tmp.106074.1777224660132",
     "wiki/experiments/llama3_8B_autoresearch_optimization/jax/__pycache__/data.cpython-313.pyc",
-    "wiki/experiments/llama3_8B_autoresearch_optimization/jax/train.py.tmp.106074.1777222597999",
-    "wiki/experiments/llama3_8B_autoresearch_optimization/jax/train.py.tmp.106074.1777222591666",
     "wiki/observations/llama3-8b-torchax-converged-stack-bottleneck-breakdown.md",
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/model/README.md",
     "wiki/experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md",

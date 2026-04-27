@@ -150,6 +150,69 @@ on raw throughput we exceed MaxText. To close the reported MFU number:
    tuned splash** — they may have additional kernel-config tweaks beyond
    what we exercised.
 
+## Follow-up (2026-04-27): match MaxText's exact splash config
+
+MaxText benchmark recipe `llama3_1_8b_8192_no_collective_matmul` uses splash
+**`bkv=2048`** across the board (we had `bkv=1024` as the holdover from
+torchax exp 8 autotune). Setting `SPLASH_BKV=2048 SPLASH_BKV_COMPUTE=2048`
+gives another **+0.7 %**:
+
+| Run | bs | bkv | tok/s/chip | MFU | Notes |
+|-----|---:|----:|-----------:|----:|-------|
+| exp 13 | 5 | 1024 | 7,415 | 41.6% | prior frontier |
+| 🏆 **exp 18** | **5** | **2048** | **7,471** | **41.9%** | **NEW frontier** |
+| exp 18b | 3 | 2048 | 7,374 | 41.3% | matched MaxText shape: **+4.3 % vs MaxText 7,069** |
+| exp 19 | 4 | 2048 | 7,380 | 41.4% | |
+| exp 19b | 6 | 2048 | OOM | — | bkv=2048 raises memory floor; bs=6 was OK with bkv=1024 |
+
+MaxText's full Llama 3.1-8B v6e-8 benchmark config (in
+`raw/code/maxtext/benchmarks/maxtext_trillium_model_configs.py:813`):
+```python
+"per_device_batch_size": 3,         # we run bs=5 (no host-offload of acts)
+"remat_policy": "custom",            # they offload activations to host
+"decoder_layer_input": "offload",
+"out_proj/query_proj/key_proj/value_proj": "offload",
+"sa_block_q": 2048, "sa_block_kv": 2048,    # NEW match
+"sa_block_q_dkv": 2048, "sa_block_kv_dkv": 2048,
+"sa_use_fused_bwd_kernel": True,
+xla_flags = (DENSE_VMEM_LIMIT + LAYOUT_FOR_ALL_REDUCE_SCATTER
+             + DATA_PARALLEL_OVERLAP + CF_FOR_ALL_GATHER
+             + ENABLE_SPARSECORE_OFFLOADING_FOR_ALL_REDUCE
+             + HOST_OFFLOAD_FLAGS + DISABLE_COLLECTIVE_MATMUL)
+```
+
+We now match the splash config and the XLA flag stack **exactly**. The
+remaining differences:
+1. **Host-offload of activations** (decoder layer input + Q/K/V/O proj) —
+   we don't implement this. Their host offload trades ~30+ GiB host
+   memory for HBM, allowing them to keep their per-chip footprint
+   smaller.
+2. **bs=3 vs bs=5** — without their host offload, we pack the activation
+   memory differently. We fit bs=5 because we keep activations in HBM
+   (the chunked_xla CE kernel's no-materialized-logits property is part
+   of why this fits).
+3. **tokamax-splash with `use_base2_exp + fuse_reciprocal +
+   max_logit_const=30`** — perf knobs not exposed by MaxText's
+   `attention="flash"` path. Confirmed in **exp 20**: same stack but
+   with `attention="flash"` (jax-experimental splash, the same kernel
+   MaxText uses) → 7,142/chip 40.0 % — **almost exactly MaxText's 7,138**.
+   So tokamax-splash is the **+4.4 %** delta over MaxText's kernel.
+
+### Verdict update
+
+**The 2026-04-26 frontier (exp 13) is superseded by exp 18.** The
+program-target best is now:
+
+  scan + AMP master (fp32 weights / bf16 compute) + tokamax CE
+  (chunked_xla, autotune, fp32 cast at boundary) + tokamax-splash
+  (`use_base2_exp + fuse_reciprocal + max_logit_const=30`, bkv=2048
+  matched to MaxText) + `nothing_saveable` scan remat + VMEM=98 KiB +
+  full MaxText XLA flag stack (HOST_OFFLOAD bundle + DISABLE_COLLECTIVE_MATMUL
+  + SparseCore offload + recipe flags) + bs=5 seq=8192 →
+  **7,471 tok/s/chip, 41.9 % reported MFU**.
+
+vs MaxText reference 7,069/chip at bs=3 → **+5.7 % per chip**.
+
 ## Profile (bs=5 frontier)
 
 - **xprof run name**: `llama3-8b-jax-exp15-mxt-prof-bs5/2026_04_26_21_54_58`
