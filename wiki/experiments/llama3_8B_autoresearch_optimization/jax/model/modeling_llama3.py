@@ -952,6 +952,15 @@ class LlamaForCausalLMScan(nnx.Module):
         cfg = self.config
         cdt = self.compute_dtype
 
+        # Optional pre-cast of all stacked weights to compute_dtype once
+        # (outside the scan loop) so the scan body reads bf16 from HBM
+        # directly. With AMP master fp32 weights this lets one fp32->bf16
+        # cast happen once per train_step instead of being implicit at
+        # each of the 32 scan iterations. Risk: doubles weight HBM peak
+        # while both copies are alive; gated by env-var to A/B test.
+        if os.environ.get("JAX_PRECAST_BF16_WEIGHTS", "0") == "1":
+            stacked = {k: v.astype(cdt) for k, v in stacked.items()}
+
         def body(carry_hidden, per_layer):
             new_hidden = _decoder_call(
                 per_layer, carry_hidden, cos, sin,
@@ -962,7 +971,8 @@ class LlamaForCausalLMScan(nnx.Module):
         if self.scan_remat_policy is not None:
             body = jax.checkpoint(body, policy=self.scan_remat_policy)
 
-        hidden, _ = jax.lax.scan(body, hidden, stacked)
+        unroll = int(os.environ.get("JAX_SCAN_UNROLL", "1"))
+        hidden, _ = jax.lax.scan(body, hidden, stacked, unroll=unroll)
         hidden = self.model.norm(hidden)
         if return_hidden or self.skip_lm_head:
             return hidden

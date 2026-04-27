@@ -1,5 +1,23 @@
 # Log
 
+## [2026-04-27] formulate + run-experiment | jax Llama 3 8B v6e-8 — 22-experiment exhaustive ablation around exp 28b; frontier saturated at ~7,700/chip 43.3 % MFU
+
+**Op**: formulate (3 deep-work hypotheses) + run-experiment (× 22: jax-exp 39-60 ablation around the SparseCore-offload frontier).
+**Pages created**:
+- `wiki/hypotheses/llama3-jax-rmsnorm-matmul-prologue-fusion.md`
+- `wiki/hypotheses/llama3-jax-pallas-swiglu-downproj-fusion.md`
+- `wiki/hypotheses/llama3-jax-int8-weight-quantization.md`
+**Pages updated**: `wiki/experiments/.../jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md` (added Wave 4-5 ablation table + noise-band correction); image `precast-1` shipped with the bf16 pre-cast env-var knob.
+**Key result**: **No further knob improves on exp 28b.** Three independent re-runs measure the noise band as **±0.7 %** (±50 tok/s/chip); the honest frontier is **~7,700 tok/s/chip / 43.3 % MFU** (mean), not the 7,768/43.6 % single-run peak. vs MaxText 7,069/chip = **+8.9 % per chip** (mean), still beating their reference.
+**Ablation summary (22 runs in five waves, all refuted or within noise)**:
+- Remat policies: `save_out_proj` OOM at bs=4 / -0.6 % at bs=3; `save_qkv_proj` OOM bs=4; `qkv_proj_offloaded` -0.8 to -0.9 % at bs=4-5.
+- Kernel/density: scan unroll=2 -1.9 %; SPLASH_BQ=4096 -21 %; SPLASH_BKV=512 -2.2 %; SPLASH_BKV_DKV=1024 -3.3 %; bs=3 -2.7 % vs bs=4 frontier.
+- VMEM: 65,536 -4.2 %; 81,920 -1.6 %; 131,072 -2.9 % (all worse than 98,304).
+- XLA flags (added or flipped): disable_bundle_aware_cost_model -1.7 %; enhanced_launch_barrier -1.1 %; async_collective_permute within noise; megacore_fusion_allow_ags=false within noise; combo of the two within-noise -1.1 %; collective matmul ENABLED -14.7 % (hard refute); overlap_compute_collective_tc=false -1.1 %; aggressive_opt_barrier_removal=DISABLED within noise; latency_hiding_scheduler_rerun=0 within noise; loop-invariant chain DISABLED -0.7 %; tokamax CE = mosaic_tpu -4.4 %.
+- Code change: pre-cast bf16 weights once per train_step → -0.5 to -1.1 % (XLA already fuses cast into matmul prologue; pre-cast adds an HBM round-trip rather than removing one).
+**Deep-work hypotheses filed**: (1) Pallas RMSNorm + matmul-prologue fusion (expected +3-6 %, effort L); (2) Pallas SwiGLU + down_proj fusion (expected +2-4 %, effort L; **but pallas-forge's TPU SwiGLU loses 35 % to XLA on v5e — XLA may already be doing this fusion. Validate with HLO dump first.**); (3) int8 / AQT or qwix weight-only quantization (expected +15-30 %, effort L). All three include a SwiGLU-research-agent finding: best scaffolding is `tpu-inference/tpu_inference/kernels/fused_moe/v1/kernel.py:77-85,1476-1482` which already fuses `silu(gate)*up` with two grouped matmuls in a single TPU Pallas kernel.
+**Verdict**: bf16-MXU optimization regime is saturated. Further wins require either custom Pallas kernels (eat the 9.2 % loop-fusion line) or int8 quantization (break the 65.8 % bf16-MXU ceiling).
+
 ## [2026-04-26] run-experiment | jax Llama 3 8B v6e-8 — exp 29-38 post-frontier knob sweep; exp 28b holds
 
 **Op**: run-experiment (× 8: jax-exp 29-38 follow-ups to the SparseCore-offload frontier).

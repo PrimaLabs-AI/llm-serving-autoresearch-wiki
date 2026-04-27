@@ -183,7 +183,53 @@ All on top of the exp 28b stack (bs=4 + full SC offload + bkv=1024):
 | exp 37 | `qkv_proj_offloaded` + bs=6 | OOM | — | — | runtime OOM (host-offload doesn't shrink runtime workspace) |
 | exp 38 | `qkv_proj_offloaded` + bs=5 | 7,634 | 42.8 % | -1.7 % | refuted; host offload also hurts at bs=5 |
 
-**Conclusion**: exp 28b at `bs=4 + bkv=1024 + full SC offload + MaxText XLA stack` is the durable frontier. **All seven post-frontier knobs (kernel-block, VMEM, density variations, named remat, host-offload) refuted.** The TC is already 99.986 % busy; the activation memory budget is locked by splash workspace + matmul scratch (not activations); recomputation during bwd is "free" because TC has slack — so saving Q/K/V activations costs more (HBM/PCIe traffic) than it saves (avoided matmul recompute).
+**Conclusion**: exp 28b at `bs=4 + bkv=1024 + full SC offload + MaxText XLA stack` is the durable frontier. **All post-frontier knobs (kernel-block, VMEM, density variations, named remat, host-offload) refuted.** The TC is already 99.986 % busy; the activation memory budget is locked by splash workspace + matmul scratch (not activations); recomputation during bwd is "free" because TC has slack — so saving Q/K/V activations costs more (HBM/PCIe traffic) than it saves (avoided matmul recompute).
+
+### Noise-band correction — re-validation runs
+
+Three independent re-runs of the exp 28b config (`bs=4 + full SC offload + bkv=1024 + MaxText XLA stack`) gave:
+
+| Run | tok/s/chip | MFU | Notes |
+|-----|-----------:|----:|-------|
+| exp 28b (run 1) | **7,768** | **43.6 %** | "frontier" — top of noise band |
+| exp 50 (run 2)  | 7,691 | 43.1 % | re-run validation |
+| exp 56 (run 3)  | 7,707 | 43.2 % | re-run validation |
+| **mean ± noise** | **~7,700 ± 50** | **~43.3 %** | **±0.7 % run-to-run** |
+
+The honest frontier is **~7,700 tok/s/chip / 43.3 % MFU**. The exp 28b 7,768 result was at the upper edge of the noise distribution; we keep the configuration as the chosen frontier (the stack is unchanged) but report the mean rather than the lucky run.
+
+vs MaxText reference 7,069/chip 44.6 %: **+8.9 % per chip** (mean) / +9.9 % per chip (peak run).
+
+### Wave 4–5 ablation summary (exp 39–60)
+
+22 follow-up experiments across five waves. All within noise of frontier or refuted:
+
+| Knob | tok/s/chip | Δ vs 7,700 | Verdict |
+|------|-----------:|-----------:|---------|
+| save_out_proj bs=4 | OOM | — | refuted at bs=4 (compile OOM by 507 MiB) |
+| save_out_proj bs=3 | 7,651 | -0.6 % | refuted (bs=4 frontier wins) |
+| scan unroll=2 | 7,553 | -1.9 % | refuted |
+| disable bundle-aware cost model | 7,566 | -1.7 % | refuted |
+| enhanced launch barrier | 7,612 | -1.1 % | refuted |
+| async collective permute | 7,690 | -0.1 % | within noise |
+| nomegacore_fusion_allow_ags | 7,707 | +0.1 % | within noise (no win) |
+| acpermute + nomegacore (combo) | 7,615 | -1.1 % | refuted |
+| VMEM=65,536 | 7,377 | -4.2 % | refuted |
+| VMEM=81,920 | 7,575 | -1.6 % | refuted |
+| splash bkv=512 | 7,529 | -2.2 % | refuted |
+| enable collective matmul (threshold=4) | 6,568 | -14.7 % | hard refute (CONFIRM disable) |
+| splash bkv_dkv=1024 (asymmetric) | 7,446 | -3.3 % | refuted |
+| tokamax CE = mosaic_tpu | 7,361 | -4.4 % | refuted (chunked_xla confirmed best) |
+| pre-cast bf16 weights (bs=4) | 7,615 | -1.1 % | refuted (XLA already fuses cast in matmul prologue) |
+| pre-cast bf16 weights (bs=5) | 7,665 | -0.5 % | refuted (same lesson at bs=5) |
+| overlap_compute_collective_tc=false | 7,613 | -1.1 % | refuted (CONFIRM keep =true) |
+| aggressive_opt_barrier_removal=DISABLED | 7,690 | -0.1 % | within noise |
+| latency_hiding_scheduler_rerun=0 | 7,705 | +0.1 % | within noise (cheaper compile, same perf) |
+| loop-invariant chain DISABLED | 7,646 | -0.7 % | within noise |
+| qkv_proj_offloaded bs=4/5 | 7,634-7,641 | -0.8 to -0.9 % | refuted (host PCIe > recompute savings) |
+| save_qkv_proj bs=4 | OOM | — | refuted (compile OOM by 5.67 GiB) |
+
+**Net**: the exp 28b stack survives every ablation. **None of the kernel-block / VMEM / scheduler-flag / remat-policy / weight-precast knobs find a win.** Remaining levers are deep-work items filed as standalone hypotheses ([RMSNorm+matmul fusion](../../../../hypotheses/llama3-jax-rmsnorm-matmul-prologue-fusion.md), [SwiGLU+down_proj fusion](../../../../hypotheses/llama3-jax-pallas-swiglu-downproj-fusion.md), [int8/AQT quantization](../../../../hypotheses/llama3-jax-int8-weight-quantization.md)).
 
 To enable the named-remat experiments we added MaxText-style `jax.ad_checkpoint.checkpoint_name` markers around all seven projections (`query_proj`, `key_proj`, `value_proj`, `out_proj`, `mlpwi_0`, `mlpwi_1`, `mlpwo`) in `model/modeling_llama3.py:_decoder_call` and a `_resolve_scan_policy` helper in `train.py` that recognises `save_qkv_proj`, `save_out_proj`, `save_dot_except_mlp`, `qkv_proj_offloaded`, and `minimal_offloaded` (the same set MaxText exposes). These knobs are now available for future work without further code changes.
 
