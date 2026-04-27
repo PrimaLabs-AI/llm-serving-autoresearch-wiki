@@ -231,6 +231,14 @@ raw/profiles/*
 # Local agent / IDE state.
 .claude/
 
+# Obsidian per-session UI state (open tabs, scroll positions, focused
+# pane). Changes every session and per-machine — pure conflict source.
+# Keep app.json / appearance.json / core-plugins.json / graph.json
+# tracked since those are stable shared vault settings.
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+
 # Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
 # Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`
 # pages and OBSERVATIONS.md (both tracked); RESULTS.tsv is just a working
