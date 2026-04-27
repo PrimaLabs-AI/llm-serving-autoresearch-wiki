@@ -3,7 +3,7 @@ title: "Llama 3 8B — TPU Autoresearch Optimization"
 type: experiment-program
 tags: [program, model-under-optimization, llama, torchax, jax, active]
 created: 2026-04-25
-updated: 2026-04-25
+updated: 2026-04-27
 status: active
 hardware: "TPU v6e (primary)"
 framework: "torchax (PyTorch-on-JAX); optional native-JAX port"
@@ -17,6 +17,33 @@ A long-running research program that imports Meta's **Llama 3 8B** via Hugging F
 **This is an optimization program, not a quality program.** Per the wiki's scope rule, any change that alters model semantics (output distribution, accuracy, convergence) is invalid — regardless of speedup. We optimize step time, MFU, tokens/sec, and memory only. Outputs of the optimized model must match the reference within bf16 numerical tolerance.
 
 Individual experiments for this program live as dated files in **this folder**: `<YYYY-MM-DD>-<slug>.md`. Working scripts and configs are split by execution path: [`torchax/`](torchax/README.md) (primary — PyTorch-on-JAX) and [`jax/`](jax/README.md) (secondary — native-JAX port). Profiles for each experiment are captured to `raw/profiles/<YYYY-MM-DD>-<slug>/`. See the "Schema note" section at the bottom.
+
+## TL;DR — current state (2026-04-27)
+
+🏆 **Frontier**: native-JAX (Flax NNX) stack at **~7,700 tok/s/chip / 43.3 % MFU** on v6e-8 at `bs=4 seq=8192 fsdp=8` (mean of 3 reruns; peak run 7,768/43.6 %). Loss-validated bit-equivalent to a minimal-flags baseline over 100 training steps (max \|Δ\| = 0.0003). Bf16-MXU optimization regime is empirically saturated — only int8/AQT remains as a viable per-chip throughput lever.
+
+### Cross-stack comparison (Llama 3 / 3.1 8B, v6e-8, bs configured per stack, seq=8192)
+
+| Stack | Best config | tok/s/chip | MFU | vs MaxText | Reference experiment |
+|-------|-------------|-----------:|----:|-----------:|----------------------|
+| 🏆 **JAX (Flax NNX)** | bs=4, full MaxText XLA stack + SC offload of AR/RS/AG + tokamax-splash w/ base2/fuse_recip/mlc=30 + tokamax CE chunked_xla + scan/`nothing_saveable` | **~7,700** (peak 7,768) | **~43.3 %** (peak 43.6 %) | **+8.9 %** (peak +9.9 %) | [JAX exp 27/28b](jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md) |
+| MaxText reference | bs=3, `tpu-recipes-v0.1.4` recipe `llama3_1_8b_8192_no_collective_matmul` (host-offload of activations + custom remat + AR-only SC offload) | 7,069 | 44.6 % | — (anchor) | [MaxText baseline](maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) |
+| torchax (PyTorch-on-JAX) | bs=3, scan + tokamax CE chunked_xla + tokamax-splash w/ base2/fuse_recip/mlc=30 + AMP fp32-master | 6,559 | 36.8 % | -7.2 % | [torchax exp 72a/74b](torchax/experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md) |
+| torchax (morning baseline) | bs=2 seq=1024, no scan/tokamax, plain AMP | 4,591 | 22.9 % (at seq=1024) | — | [torchax baseline](torchax/experiments/2026-04-25-baseline.md) |
+
+**JAX vs torchax (same hardware, same model, both at their best)**: **+17.4 % per-chip** — the native-JAX port closes its 17 % gap to MaxText and then beats it; torchax has a residual ~7 % gap to MaxText that's not closeable by knob-tuning under the current scaffold (further wins would require torchax dispatch-overhead reduction at the framework level or kernel-level changes already in the JAX path).
+
+**JAX vs MaxText** (the +8.9 % / +9.9 % win): **the bf16-MXU path is faster than MaxText on v6e-8 at 8 K context**. The FLOP-counter normalization difference accounts for the 1.0 pp reported MFU gap (MaxText counts more FLOPs/token in their formula) — under MaxText's accounting we measure 49.0 % MFU on the same throughput, **+4.4 pp above MaxText's reported 44.6 %**. Profile breakdown of the JAX frontier: matmul 60.1 %, splash 25.5 %, loop fusion 9.2 %, async-collective 1.7 %, **TC idle 0.014 % (saturated)**.
+
+**Cumulative session climb**: torchax morning baseline 4,591 tok/s/chip → JAX exp 28b 7,768 tok/s/chip = **+69.2 % per-chip throughput** in two days.
+
+### Open + refuted hypotheses (post-frontier)
+
+- **Open**: [int8 weight-only quantization (AQT/qwix)](../../hypotheses/llama3-jax-int8-weight-quantization.md) — expected +15-30 % step time, would shift onto the 2× int8-MXU path and break the 65.8 % bf16-MXU ceiling.
+- ~~Pallas RMSNorm + matmul-prologue fusion~~ — **refuted via HLO inspection** 2026-04-27. XLA already inlines RMSNorm into each matmul's `kind=kOutput` Mosaic kernel.
+- ~~Pallas SwiGLU + down_proj fusion~~ — **refuted via HLO inspection** 2026-04-27. XLA already fuses silu+mult+down_proj+residual into a single `kind=kOutput` kernel.
+
+The HLO refutation was the methodology highlight of this program: a 30-minute `XLA_FLAGS=--xla_dump_to=…` capture + grep saved 2-4 weeks of Pallas-kernel work. See [`raw/profiles/2026-04-27-jax-hlodump-exp28b/`](../../../raw/profiles/2026-04-27-jax-hlodump-exp28b/) for the preserved HLO evidence.
 
 ## Target metrics
 
