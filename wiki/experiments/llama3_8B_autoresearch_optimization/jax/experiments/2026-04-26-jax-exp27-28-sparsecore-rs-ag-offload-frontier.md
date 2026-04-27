@@ -144,10 +144,57 @@ This is the **new program-target best for the JAX stack**:
 
 ## Profile
 
-- **xprof run name**: `llama3-8b-jax-exp28pf-sc-bs4-prof` (capture in flight at writeup time)
-- **on-disk**: `raw/profiles/2026-04-26-jax-exp28b-sc-rsag-bs4/` (pulled via `kubectl cp` from the sleep-hold pod)
+- **xprof run name**: `llama3-8b-jax-exp28pf-sc-bs4-prof/2026_04_27_03_14_26`
+- **xprof URL**: http://localhost:8791/?run=llama3-8b-jax-exp28pf-sc-bs4-prof/2026_04_27_03_14_26
+- **on-disk**: [`raw/profiles/2026-04-26-jax-exp28b-sc-rsag-bs4/`](../../../../../raw/profiles/2026-04-26-jax-exp28b-sc-rsag-bs4/)
+- **GCS**: `gs://tpu-pytorch-alekseyv-us-central2/jax-experiment/llama3-8b-jax-exp28pf-sc-bs4-prof/`
 - **steps captured**: profile_step=7 of a 10-step run (config matches exp 28b verbatim)
-- **purpose**: identify the new dominant bottleneck after all three FSDP collectives are SC-offloaded; expectation is that step time is now bound by matmul + splash custom-call
+- **headline**: MXU util **65.8 %** (was 64.1 % at exp 13/15); step time 4,267 ms; conv fusion **60.1 %** (was 57.2 %); splash custom-call 25.5 %; loop fusion 9.2 %; **async-collective dropped from 5.0 % → 1.7 %** (3.3 pp saved by SC RS+AG offload).
+
+### Profile breakdown table (exp 28b, bs=4, full SC offload)
+
+| Category | total ms | step % | FLOPs (TF) | bytes (GiB) | Notes |
+|----------|---------:|-------:|-----------:|------------:|-------|
+| Conv fusion (matmul) | 10,261 | **60.1 %** | 7,385 | 4,528 | MXU util 65.8 %; matmul-effective time ≈ 39.5 % |
+| Custom-call (splash) | 4,356 | 25.5 % | 2,006 | 184 | fwd+bwd kernel time |
+| Loop fusion | 1,570 | 9.2 % | 2 | 1,547 | RMSNorm + silu + residual; HBM-BW bound |
+| Data formatting | 380 | 2.2 % | 0 | 393 | layout/reshape ops |
+| Async-done | 233 | 1.4 % | 0 | 123 | SC offload completion (small now) |
+| Reduce | 147 | 0.9 % | 0 | 160 | |
+| All-reduce | 53 | 0.3 % | 0 | 0 | residual TC AR (CE shard_map psum) |
+| TC idle | 0.6 | **0.014 %** | — | — | almost zero idle |
+| Step time | **4,267 ms** | 100 % | — | — | |
+
+The matmul share grew from 57.2 % → 60.1 % (+2.9 pp) and MXU util grew from 64.1 % → 65.8 % (+1.7 pp). That is exactly where the +4 % per-chip throughput came from: the 3.3 pp of TC time previously spent on async collectives was reclaimed for matmul.
+
+## Follow-up sweeps (exp 29–38)
+
+All on top of the exp 28b stack (bs=4 + full SC offload + bkv=1024):
+
+| Run | Knob | tok/s/chip | MFU | Δ vs exp 28b | Verdict |
+|-----|------|-----------:|----:|-------------:|---------|
+| 🏆 **exp 28b** | baseline | **7,768** | **43.6 %** | — | **frontier (durable)** |
+| exp 29 | VMEM=131072 (vs 98304) | 7,546 | 42.3 % | **-2.9 %** | refuted; more VMEM hurts (same direction as torchax exp 77) |
+| exp 30 | bkv=2048 (vs bkv=1024) | 7,752 | 43.5 % | -0.2 % | within noise; +0.7 % bkv lift from exp 18 does **not** compound on full SC offload |
+| exp 31 | bs=3 (matches MaxText shape) | 7,559 | 42.4 % | -2.7 % | density check; **still beats MaxText 7,069/chip by +6.9 %** at MaxText's bs=3 shape |
+| exp 32 | SPLASH_BQ=4096 (vs 2048) | 6,122 | 34.3 % | **-21.2 %** | refuted; bigger query blocks → VMEM spill |
+| exp 35 | `save_qkv_proj` remat policy | OOM | — | — | refuted; saving Q/K/V across 32 scanned layers blows compile peak by +5.67 GiB at bs=4 |
+| exp 36 | `qkv_proj_offloaded` (host-offload Q/K/V) | 7,641 | 42.8 % | **-1.6 %** | refuted; host PCIe latency outweighs recompute savings at bs=4 |
+| exp 37 | `qkv_proj_offloaded` + bs=6 | OOM | — | — | runtime OOM (host-offload doesn't shrink runtime workspace) |
+| exp 38 | `qkv_proj_offloaded` + bs=5 | 7,634 | 42.8 % | -1.7 % | refuted; host offload also hurts at bs=5 |
+
+**Conclusion**: exp 28b at `bs=4 + bkv=1024 + full SC offload + MaxText XLA stack` is the durable frontier. **All seven post-frontier knobs (kernel-block, VMEM, density variations, named remat, host-offload) refuted.** The TC is already 99.986 % busy; the activation memory budget is locked by splash workspace + matmul scratch (not activations); recomputation during bwd is "free" because TC has slack — so saving Q/K/V activations costs more (HBM/PCIe traffic) than it saves (avoided matmul recompute).
+
+To enable the named-remat experiments we added MaxText-style `jax.ad_checkpoint.checkpoint_name` markers around all seven projections (`query_proj`, `key_proj`, `value_proj`, `out_proj`, `mlpwi_0`, `mlpwi_1`, `mlpwo`) in `model/modeling_llama3.py:_decoder_call` and a `_resolve_scan_policy` helper in `train.py` that recognises `save_qkv_proj`, `save_out_proj`, `save_dot_except_mlp`, `qkv_proj_offloaded`, and `minimal_offloaded` (the same set MaxText exposes). These knobs are now available for future work without further code changes.
+
+## MaxText FLOP-counter normalization
+
+Reported MFU gap (43.6 % us vs 44.6 % MaxText) is partly FLOP normalization. Solving the formula:
+
+- MaxText: 7,069 tok/s/chip × FLOPs/token / 918 TFLOPs/sec/chip = 0.446 → FLOPs/token ≈ 5.79 × 10¹⁰
+- Ours:     7,768 tok/s/chip × FLOPs/token / 918 TFLOPs/sec/chip = 0.436 → FLOPs/token ≈ 5.16 × 10¹⁰
+
+We use **~11 % fewer FLOPs/token** in our MFU formula. If we used MaxText's count: `7,768 × 5.79e10 / 918e12 = 0.490 = 49.0 % MFU`. So on MaxText's accounting we are **+4.4 pp MFU above MaxText's 44.6 %**, not below.
 
 ## Path to higher MFU (open hypotheses)
 

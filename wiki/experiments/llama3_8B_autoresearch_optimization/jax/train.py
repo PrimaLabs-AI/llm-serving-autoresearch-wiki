@@ -64,6 +64,47 @@ def _to_jnp_dtype(name: str) -> jnp.dtype:
     return jnp.bfloat16 if name == "bf16" else jnp.float32
 
 
+# MaxText-style named-checkpoint sets; mirror `decoders.py:393-435` so a
+# single CLI flag selects the same policy by name as MaxText.
+_SAVE_QKV_PROJ_NAMES = ("query_proj", "key_proj", "value_proj")
+_SAVE_QKV_OUT_NAMES = (*_SAVE_QKV_PROJ_NAMES, "out_proj")
+_SAVE_DOT_EXCEPT_MLP_NAMES = (*_SAVE_QKV_OUT_NAMES,)  # MLP layers are recomputed
+_OFFLOAD_QKV_NAMES = _SAVE_QKV_PROJ_NAMES
+_MINIMAL_OFFLOAD_NAMES = (*_SAVE_QKV_OUT_NAMES, "mlpwi_0", "mlpwi_1", "mlpwo")
+
+
+def _resolve_scan_policy(name: str):
+    """Resolve a `scan_remat_policy` name to a jax.checkpoint policy.
+
+    Recognises (a) every attribute of `jax.checkpoint_policies` (e.g.
+    `nothing_saveable`, `dots_saveable`, `everything_saveable`) and
+    (b) MaxText's named-set policies (`save_qkv_proj`, `save_out_proj`,
+    `save_dot_except_mlp`, `qkv_proj_offloaded`, `minimal_offloaded`).
+    """
+    cp = jax.checkpoint_policies
+    if name == "save_qkv_proj":
+        return cp.save_only_these_names(*_SAVE_QKV_PROJ_NAMES)
+    if name == "save_out_proj":
+        return cp.save_only_these_names("out_proj")
+    if name == "save_dot_except_mlp":
+        return cp.save_only_these_names(*_SAVE_DOT_EXCEPT_MLP_NAMES)
+    if name == "qkv_proj_offloaded":
+        return cp.save_and_offload_only_these_names(
+            names_which_can_be_saved=[],
+            names_which_can_be_offloaded=list(_OFFLOAD_QKV_NAMES),
+            offload_src="device",
+            offload_dst="pinned_host",
+        )
+    if name == "minimal_offloaded":
+        return cp.save_and_offload_only_these_names(
+            names_which_can_be_saved=[],
+            names_which_can_be_offloaded=list(_MINIMAL_OFFLOAD_NAMES),
+            offload_src="device",
+            offload_dst="pinned_host",
+        )
+    return getattr(cp, name)
+
+
 def main(
     model_id: str = "meta-llama/Meta-Llama-3-8B",
     batch_size: int = 4,
@@ -184,7 +225,7 @@ def main(
     rngs = nnx.Rngs(0)
 
     if use_scan:
-        scan_policy = getattr(jax.checkpoint_policies, scan_remat_policy)
+        scan_policy = _resolve_scan_policy(scan_remat_policy)
         print(f"[scan] LlamaForCausalLMScan (32 layers stacked), "
               f"checkpoint_policy={scan_remat_policy}", flush=True)
         model = LlamaForCausalLMScan(
@@ -221,7 +262,7 @@ def main(
         # Wrap each LlamaDecoderLayer.__call__ in a per-layer jax.checkpoint
         # so XLA schedules them serially. We do this by patching the
         # __call__ on each layer instance.
-        _policy = getattr(jax.checkpoint_policies, scan_remat_policy)
+        _policy = _resolve_scan_policy(scan_remat_policy)
         for i, layer in enumerate(model.model.layers):
             orig_call = layer.__call__
             @functools.wraps(orig_call)

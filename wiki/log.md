@@ -1,5 +1,22 @@
 # Log
 
+## [2026-04-26] run-experiment | jax Llama 3 8B v6e-8 — exp 29-38 post-frontier knob sweep; exp 28b holds
+
+**Op**: run-experiment (× 8: jax-exp 29-38 follow-ups to the SparseCore-offload frontier).
+**Pages updated**: `wiki/experiments/.../jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md` (extended Follow-up sweeps table); `wiki/experiments/.../jax/{train.py, model/modeling_llama3.py}` (named-checkpoint markers + `_resolve_scan_policy` helper); built docker image tag `saveqkv-1` carrying the new code.
+**Key result**: **All seven post-frontier knobs refuted.** exp 28b (7,768/chip 43.6 % MFU at bs=4 + bkv=1024 + full SC offload) holds as the durable frontier. The TC is now 99.986 % busy and recomputation during bwd is "free" because TC has slack while collectives are SC-offloaded — so any policy that saves activations to HBM (`save_qkv_proj`) blows compile peak, and any policy that saves to host (`qkv_proj_offloaded`) costs more PCIe traffic than it saves in avoided matmul recompute.
+**Refutations summary**:
+- exp 29: VMEM=131072 (vs 98304) → 7,546/chip 42.3 % (-2.9 %); same direction as torchax exp 77.
+- exp 30: bkv=2048 (vs 1024) → 7,752/chip 43.5 % (-0.2 % within noise); the +0.7 % bkv-2048 lift from exp 18 does **not** compound once SC offload is on.
+- exp 31: bs=3 (MaxText shape) → 7,559/chip 42.4 %; density check confirms we still beat MaxText 7,069/chip by **+6.9 %** at their exact shape.
+- exp 32: SPLASH_BQ=4096 → 6,122/chip 34.3 % (**-21.2 %**); VMEM spill from larger query blocks.
+- exp 35: `save_qkv_proj` (named QKV save) → OOM at compile by +5.67 GiB at bs=4; saving Q/K/V across 32 scanned layers exceeds HBM peak.
+- exp 36: `qkv_proj_offloaded` bs=4 → 7,641/chip 42.8 % (-1.6 %); host PCIe latency > recompute savings.
+- exp 37: `qkv_proj_offloaded` bs=6 → runtime OOM; host offload doesn't shrink the runtime workspace floor.
+- exp 38: `qkv_proj_offloaded` bs=5 → 7,634/chip 42.8 % (-1.7 %); same conclusion at higher density.
+**Code change shipped** (image tag `saveqkv-1`): `jax.ad_checkpoint.checkpoint_name` markers around all seven projections (query/key/value/out/mlpwi_0/mlpwi_1/mlpwo) in `_decoder_call`, plus a `_resolve_scan_policy` helper that recognises MaxText's policy names (`save_qkv_proj`, `save_out_proj`, `save_dot_except_mlp`, `qkv_proj_offloaded`, `minimal_offloaded`). These knobs are now available for future work without further code changes.
+**Notes**: One docker tag-cache hiccup (kubelet cached an old `jax-v6` digest with the same content as the prior `jax-v5`; resolved by pushing under a fresh tag `saveqkv-1`).
+
 ## [2026-04-26] run-experiment | jax Llama 3 8B v6e-8 — exp 27/28b SparseCore RS+AG offload + bs=4 → NEW FRONTIER 7,768/chip 43.6 % MFU
 
 **Op**: run-experiment (jax-exp 26 profile + jax-exp 27 bs=5 + jax-exp 28 bs=6 + jax-exp 28b bs=4 + jax-exp 28pf profile rerun).

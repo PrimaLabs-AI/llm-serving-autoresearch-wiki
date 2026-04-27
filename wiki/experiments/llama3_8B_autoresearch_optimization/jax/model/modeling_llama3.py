@@ -819,14 +819,22 @@ def _decoder_call(
             precision=jax.lax.Precision.DEFAULT,
         )
 
+    # MaxText-style named-checkpoint markers so a `save_only_these_names`
+    # remat policy can target the QKV/O/MLP projection outputs without
+    # having to reach inside the dot_general unnamed.
+    _name = jax.ad_checkpoint.checkpoint_name
+
     residual = hidden
     x = _rmsnorm(hidden, layer_params["input_layernorm.weight"])
     # Attention.
-    q = _matmul(x, layer_params["self_attn.q_proj.weight"]).reshape(B, T, Hq, head_dim)
+    q = _name(_matmul(x, layer_params["self_attn.q_proj.weight"]), "query_proj")
+    q = q.reshape(B, T, Hq, head_dim)
     q = jnp.transpose(q, (0, 2, 1, 3))
-    k = _matmul(x, layer_params["self_attn.k_proj.weight"]).reshape(B, T, Hkv, head_dim)
+    k = _name(_matmul(x, layer_params["self_attn.k_proj.weight"]), "key_proj")
+    k = k.reshape(B, T, Hkv, head_dim)
     k = jnp.transpose(k, (0, 2, 1, 3))
-    v = _matmul(x, layer_params["self_attn.v_proj.weight"]).reshape(B, T, Hkv, head_dim)
+    v = _name(_matmul(x, layer_params["self_attn.v_proj.weight"]), "value_proj")
+    v = v.reshape(B, T, Hkv, head_dim)
     v = jnp.transpose(v, (0, 2, 1, 3))
     q, k = apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1)
 
@@ -839,15 +847,18 @@ def _decoder_call(
             scaling=scaling, is_causal=True, attention_mask=None,
         )
     attn_out = attn_out.reshape(B, T, Hq * head_dim)
-    attn_out = _matmul(attn_out, layer_params["self_attn.o_proj.weight"])
+    attn_out = _name(_matmul(attn_out, layer_params["self_attn.o_proj.weight"]), "out_proj")
     hidden = residual + attn_out
 
     residual = hidden
     x = _rmsnorm(hidden, layer_params["post_attention_layernorm.weight"])
     # SwiGLU MLP.
-    g = _matmul(x, layer_params["mlp.gate_proj.weight"])
-    u = _matmul(x, layer_params["mlp.up_proj.weight"])
-    h = _matmul(jax.nn.silu(g) * u, layer_params["mlp.down_proj.weight"])
+    g = _name(_matmul(x, layer_params["mlp.gate_proj.weight"]), "mlpwi_0")
+    u = _name(_matmul(x, layer_params["mlp.up_proj.weight"]), "mlpwi_1")
+    h = _name(
+        _matmul(jax.nn.silu(g) * u, layer_params["mlp.down_proj.weight"]),
+        "mlpwo",
+    )
     return residual + h
 
 
