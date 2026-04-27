@@ -29,10 +29,15 @@ torchax/
   <YYYY-MM-DD>-<slug>/   per-experiment script+config when materially divergent
 ```
 
-## Running the trainer
+## Final status (2026-04-27)
 
-**Status:** scaffold only. Written but not executed. See the header of
-`train.py` and `UNTESTED` markers for the concrete risks.
+**Frontier**: 6,559 tok/s/chip / 36.8 % MFU at `bs=3 seq=8192 fsdp=8` on v6e-8 — see [exp 72a/74b](experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md). Stack: scan-over-layers + AMP master fp32 weights / bf16 compute + tokamax CE chunked_xla + tokamax-splash with `use_base2_exp + fuse_reciprocal + max_logit_const=30` + recipe XLA flags. **Cumulative climb 4,591 → 6,559 = +42.9 % per chip** vs the morning baseline.
+
+**vs JAX sibling**: native-JAX [exp 28b](../jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md) on the same hardware/model reaches ~7,700/chip 43.3 % MFU (peak 7,768/43.6 %) at bs=4 seq=8192 — **+17.4 % per-chip over the torchax frontier**. The remaining gap is largely from torchax dispatch overhead at the framework level + the JAX path being able to use MaxText's full XLA flag stack (HOST_OFFLOAD_FLAGS + SC offload of all 3 FSDP collectives) more effectively. After exp 74b the torchax frontier saturated; the program-target throughput work moved to the [`../jax/`](../jax/README.md) sibling.
+
+**vs MaxText reference**: [MaxText baseline](../maxtext/experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) at 7,069/chip 44.6 % MFU (bs=3 seq=8192) sits **+7.8 % above the torchax frontier**. The torchax path can't close this gap without either (a) closing the dispatch-overhead gap to native JAX, or (b) writing TPU Pallas kernels that XLA isn't already doing — and 2026-04-27 HLO inspection showed XLA already fuses RMSNorm+matmul and SwiGLU+down_proj into `kind=kOutput` Mosaic kernels (see [refuted hypothesis pages](../../../hypotheses/)), so the latter avenue is closed.
+
+## Running the trainer
 
 ### First-time setup
 
@@ -113,21 +118,12 @@ The baseline experiment page fills these in and references the profile
 directory. Numbers above are placeholders — until the scaffold actually
 runs, all targets are TBD.
 
-### Known limitations of the scaffold
+### Known limitations of the trainer (2026-04-27 final state)
 
-See the header of `train.py` and `model/README.md`. Most consequential:
-
-- **Untested end-to-end.** Written from the codebase + source page cookbook;
-  no step has run.
-- **`num_kv_heads = 2` < `tp = 8`** → K/V projections replicated (correct,
-  suboptimal). See `model/sharding.py`.
-- **Pytree registration** may need patching to the shipped HF version
-  (`CausalLMOutputWithPast`, `DynamicCache`, `StaticCache`).
-- **Captured constants**: if JAX logs a multi-GB captured-constants warning,
-  follow the `functional_call` pattern from
-  [jax-huggingface part 3](../../../sources/2026-jax-huggingface-part-3.md)
-  — the scaffold already threads weights through `JittableModule.functional_call`,
-  so this should be fine, but verify.
+- **`num_kv_heads = 2` < `tp = 8`** → K/V projections replicated (correct, suboptimal). See `model/sharding.py`. Mitigated at the program level by using FSDP, not TP, as the primary parallelism axis.
+- **Step-1 recompile** (~150 s overhead per run iteration). Open follow-up; not blocking but adds friction to fast iteration.
+- **NaN loss at seq≥2048** with the original HF transformers Llama 3 8B path; resolved at seq=8192 once the program migrated to AMP master + tokamax CE + scan (exp 20+).
+- **Captured constants** addressed via `JittableModule.functional_call`; no multi-GB warnings observed at frontier shape.
 
 ## See also
 

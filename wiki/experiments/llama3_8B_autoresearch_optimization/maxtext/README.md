@@ -2,7 +2,17 @@
 
 Reference-baseline runs of **Llama 3.1-8B via [MaxText](../../codebases/maxtext.md)** on TPU. This is the **reference** stack for the program — we don't develop optimizations *here*; we run the official AI-Hypercomputer recipes verbatim and use them as a measured ceiling for the torchax and native-JAX stacks to target.
 
-Companion folders: [`../torchax/`](../torchax/README.md) (primary — PyTorch-on-JAX, where optimizations are explored), [`../jax/`](../jax/README.md) (secondary — native-JAX port).
+Companion folders: [`../torchax/`](../torchax/README.md) (PyTorch-on-JAX, where the program started — final 6,559/chip 36.8 % MFU), [`../jax/`](../jax/README.md) (native-JAX port — final ~7,700/chip 43.3 % MFU, **+8.9 % per-chip vs MaxText**).
+
+## Status (2026-04-27)
+
+| Run | tok/s/chip | MFU | Date | Page |
+|-----|-----------:|----:|------|------|
+| MaxText `tpu-recipes-v0.1.4` recipe `llama3_1_8b_8192_no_collective_matmul`, bs=3 seq=8192 fsdp=8 v6e-8 | **7,069** | **44.6 %** | 2026-04-25 | [baseline](experiments/2026-04-25-maxtext-llama3-1-8b-v6e8-baseline.md) |
+
+Reproduces the recipe-README's published Trillium numbers (~413 TFLOPs/dev, ~7,139 TPS) within −1 % on this cluster. Used as the published ceiling that the torchax + native-JAX stacks target.
+
+**As of 2026-04-27 the native-JAX stack has exceeded this baseline by +8.9 % per chip** (mean of 3 reruns: ~7,700/chip 43.3 % MFU; peak run 7,768/43.6 %). The 1.0 pp reported MFU gap is FLOP-counter normalization difference (under MaxText's accounting our throughput translates to 49.0 % MFU, +4.4 pp above their reported 44.6 %).
 
 ## Convention
 
