@@ -1,5 +1,16 @@
 # Log
 
+## [2026-04-26] run-experiment | jax Llama 3 8B v6e-8 — exp 27/28b SparseCore RS+AG offload + bs=4 → NEW FRONTIER 7,768/chip 43.6 % MFU
+
+**Op**: run-experiment (jax-exp 26 profile + jax-exp 27 bs=5 + jax-exp 28 bs=6 + jax-exp 28b bs=4 + jax-exp 28pf profile rerun).
+**Pages created**: [`wiki/experiments/.../jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md`](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md).
+**Pages updated**: `wiki/index.md` (Models entry, Experiments list, headline count); `wiki/experiments/.../jax/experiments/README.md` (Current best table now points to exp 28b).
+**Key result**: **NEW PROGRAM-TARGET BEST 7,768 tok/s/chip, 43.6 % MFU at bs=4 seq=8192** — beats prior frontier (exp 18 at 7,471/chip 41.9 %) by **+4.0 % per chip**, beats MaxText reference (7,069/chip 44.6 %) by **+9.9 % per chip**. Reported MFU gap to MaxText narrowed from 2.7 pp → 1.0 pp.
+**The lever**: exp 26 profile of bs=5 frontier showed `async-all-reduce-scatter` at **5.0 % of step time** still on the TensorCore. Adding `xla_tpu_enable_sparse_core_collective_offload_{reduce_scatter,all_gather}=true` (matching MaxText's full SC offload triplet — we previously had only the all-reduce variant) relays both remaining FSDP collectives onto the SparseCore. **+3.4 % per chip at bs=5** (exp 27: 7,724/chip 43.3 %); **+0.6 % more at bs=4** density (exp 28b: 7,768/chip 43.6 %). bs=6 OOMs by ~220 MiB — bkv=2048 splash floor raises memory pressure beyond what density alone can compensate.
+**Loss**: identical step-for-step to prior frontiers (11.90 → 10.10 across 9 steps at bs=4) — no semantic regression.
+**Cumulative day climb**: torchax exp 20 4,591 → jax exp 28b 7,768 = **+69.2 % per-chip**.
+**Notes**: User's standing directive ("keep working on it until you match or exceed maxtext performance, do not stop") was already satisfied at exp 13 (+3.9 %); we have continued pushing through three further frontier advances (exp 18 → exp 27 → exp 28b). Profile capture rerun (exp 28pf) submitted with full SC offload + sleep-hold for trace retrieval.
+
 ## [2026-04-26] run-experiment + profile | torchax Llama 3 8B v6e-8 — exp 75-81 final sweep at the exp 74b frontier; converged
 
 **Op**: run-experiment (× 11: exp 75-81 follow-ups) + profile capture (exp 79) + observation update.
