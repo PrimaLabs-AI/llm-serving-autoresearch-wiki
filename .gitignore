@@ -228,6 +228,9 @@ raw/profiles/*
 !raw/profiles/*-hlodump-*/
 !raw/profiles/*-hlodump-*/**
 
+# Local agent / IDE state.
+.claude/
+
 # Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
 # Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`
 # pages and OBSERVATIONS.md (both tracked); RESULTS.tsv is just a working
