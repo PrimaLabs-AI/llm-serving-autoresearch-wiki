@@ -217,6 +217,11 @@ raw/profiles/*
 # runs (no xprof trace is captured for kernel-only sweeps).
 !raw/profiles/*-kernel-autotune/
 !raw/profiles/*-kernel-autotune/**
+# Exception: loss-validation runs save per-step loss values as small .txt
+# files (~800 bytes each) — the persistent proof of optimization
+# bit-equivalence. Track these alongside the experiment writeup.
+!raw/profiles/*-loss-validation/
+!raw/profiles/*-loss-validation/**
 
 # Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
 # Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`

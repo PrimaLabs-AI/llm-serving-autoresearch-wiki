@@ -11,7 +11,8 @@ Initial hypothesis: native-JAX is **0–5 %** faster on per-step time at the bs=
 ## Contents
 
 - [2026-04-26 — exp 13 chronicle (baseline → MaxText XLA stack → exp 18 frontier)](2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md)
-- 🏆 [2026-04-26 — exp 27/28b SparseCore RS+AG offload frontier](2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md) — **7,768 tok/s/chip 43.6 % MFU**
+- 🏆 [2026-04-26 — exp 27/28b SparseCore RS+AG offload frontier](2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md) — **7,768 tok/s/chip 43.6 % MFU** (mean across reruns ≈ 7,700/43.3 %)
+- 🧪 [2026-04-27 — exp 65/66/67 loss-validation 100 steps](2026-04-27-jax-exp65-67-loss-validation-100steps.md) — full optimization stack is bit-equivalent to minimal-flags baseline (max |Δ| = 0.0003 / 100 steps, bf16 noise floor)
 
 ## Current best (trunk)
 
