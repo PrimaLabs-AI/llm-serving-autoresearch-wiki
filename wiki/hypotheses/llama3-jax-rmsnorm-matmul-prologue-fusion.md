@@ -5,14 +5,16 @@ tags: [llama3, jax, pallas, mosaic-tpu, rms-norm, matmul, fusion, deep-work]
 created: 2026-04-27
 updated: 2026-04-27
 model: llama3-8b-jax
-status: open
-expected_gain: "+3-6 % step time"
+status: refuted
+expected_gain: "+3-6 % step time (claimed) — invalidated by 2026-04-27 HLO inspection"
 confidence: medium
 effort: L
 origin: jax-exp28b-profile-2026-04-26
 ---
 
 Custom Pallas TPU kernel that fuses **RMSNorm + bf16 cast + the matmul that follows** (the QKV projections after `input_layernorm`, the gate/up projections after `post_attention_layernorm`) so the post-norm activation never round-trips through HBM. Targets the 9.2 % loop-fusion line and a portion of the 20.6 % non-MXU matmul time observed in [exp 28b's profile](../experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md#profile).
+
+> [!warning] **Refuted 2026-04-27** — HLO inspection of exp 28b shows XLA already fuses this. The Q-proj fusion (`%fusion.316 = ... kind=kOutput, calls=%fused_computation.47`) inlines the entire RMSNorm body via `%fusion.301 = ... calls=%fused_computation.25`. Inside `fused_computation.25`: cast bf16→f32, broadcast rsqrt scale, multiply, broadcast RMSNorm weight, multiply, cast f32→bf16, bitcast. Then `%convolution.107 = bf16[4,8192,8,128] convolution(fusion.301, fusion.302)` is the matmul, reading the RMSNorm output directly. **One single Mosaic `kind=kOutput` kernel.** Same pattern repeats for K-proj (`fused_computation.48`), gate-proj (`fused_computation.31`), and up-proj (`fused_computation.32`) — all consume `add_rsqrt_fusion.5` and produce the matmul output in one kernel. A custom Pallas RMSNorm+matmul kernel cannot beat what XLA is already emitting; the only way to win would be to add a tiling/scheduling improvement XLA misses, which is unlikely. **Hypothesis withdrawn.** See `raw/profiles/2026-04-27-jax-hlodump-exp28b/module_0262.jit_train_step.cl_854318611.after_optimizations.hlo` (extracted to local `/tmp/hlo-exp28b-renamed/`) for the HLO evidence — search for `fused_computation.25` and `fused_computation.47`.
 
 ## Statement
 

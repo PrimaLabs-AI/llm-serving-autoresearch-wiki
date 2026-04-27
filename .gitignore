@@ -222,6 +222,11 @@ raw/profiles/*
 # bit-equivalence. Track these alongside the experiment writeup.
 !raw/profiles/*-loss-validation/
 !raw/profiles/*-loss-validation/**
+# Exception: HLO dumps (~1 MB per train_step module) used to validate
+# whether XLA is already emitting the fusion a hypothesised Pallas
+# kernel would write. Track the relevant after_optimizations.hlo files.
+!raw/profiles/*-hlodump-*/
+!raw/profiles/*-hlodump-*/**
 
 # Optimization-loop ledger files (per-program, Karpathy-autoresearch style).
 # Durable content lives in the per-experiment `<YYYY-MM-DD>-<slug>.md`

@@ -1,5 +1,20 @@
 # Log
 
+## [2026-04-27] HLO inspection | jax Llama 3 8B v6e-8 — hypotheses #2 and #3 (Pallas RMSNorm+matmul, Pallas SwiGLU+down_proj) refuted by HLO before kernel-write; XLA already does both fusions
+
+**Op**: HLO dump + inspection (one short run with `XLA_FLAGS="--xla_dump_to=/tmp/hlo --xla_dump_hlo_as_text"`) + analysis via `mcp__xprof__list_hlo_dump_modules` and grep over `module_0262.jit_train_step.cl_854318611.after_optimizations.hlo`.
+**Pages updated**: `wiki/hypotheses/llama3-jax-rmsnorm-matmul-prologue-fusion.md` (status: refuted); `wiki/hypotheses/llama3-jax-pallas-swiglu-downproj-fusion.md` (status: refuted); `wiki/index.md` (open hypotheses 3 → 1); `.gitignore` (exception added for `*-hlodump-*/`).
+**Pages created**: `raw/profiles/2026-04-27-jax-hlodump-exp28b/{module_0262, module_0449}.jit_train_step.cl_854318611.after_optimizations.hlo` (~870 KB each, evidence preserved).
+**Key result**:
+- **Hypothesis #2 (Pallas RMSNorm + matmul-prologue fusion) — REFUTED**. The Q-proj fusion `%fusion.316 = … kind=kOutput, calls=%fused_computation.47` inlines `%fusion.301 = calls=%fused_computation.25` (which is the entire RMSNorm body: bf16→f32 cast, broadcast rsqrt scale, multiply, broadcast RMSNorm weight, multiply, f32→bf16 cast, bitcast). Then `%convolution.107` matmuls the RMSNorm output against the Q-projection weight, all within a single `kind=kOutput` Mosaic kernel. Same pattern repeats for K-proj (`fused_computation.48`), gate/up MLP projections (`fused_computation.31/.32`).
+- **Hypothesis #3 (Pallas SwiGLU + down_proj fusion) — REFUTED**. The down-proj fusion `%fusion.323 = … kind=kOutput, calls=%fused_computation.40` contains: `%fusion.311 = calls=%fused_computation.8` (the full `silu(g)*u` body — negate, exp, add, divide, multiply for silu, then multiply with `u`), the `%convolution.111` down-proj matmul reading `fusion.311`'s output, and the `%add.856` residual add. **One single Mosaic `kind=kOutput` kernel** that covers exactly the work hypothesis #3 proposed to write.
+
+**Implication**: The 9.2 % loop-fusion line in [exp 28b's profile](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md#profile) is NOT coming from RMSNorm-to-matmul or SwiGLU-to-down_proj round-trips — XLA already consumes those in their respective `kind=kOutput` matmul fusions. The remaining loop-fusion bytes (1,547 GiB/step) come from elsewhere: residual scratchpads, embedding gradient, FSDP all-gather staging, fp32-master-weight casts. None of those are obvious Pallas-kernel targets.
+
+**Open hypotheses count: 3 → 1**. Only int8/AQT (#1, +15-30 % expected, biggest single lever) remains as a meaningful per-chip throughput lever.
+
+**Win for the autoresearch methodology**: a 30-minute HLO-inspection + my own filed Risks section in hypothesis #3 ("pallas-forge TPU SwiGLU loses 35 % to XLA on v5e — validate via HLO before kernel write") saved weeks of kernel-writing effort by refuting both hypotheses cheaply, before committing to a Pallas project.
+
 ## [2026-04-27] run-experiment | jax Llama 3 8B v6e-8 — 100-step loss-curve validation: optimization stack is bit-equivalent to baseline (max |Δ| = 0.0003)
 
 **Op**: run-experiment (× 5: jax-exp 65/66/67/68/69 — 100-step loss validation across 3 stack configurations + 2 LR-matched MaxText comparisons).

@@ -5,14 +5,16 @@ tags: [llama3, jax, pallas, mosaic-tpu, swiglu, gated-linear-unit, matmul, fusio
 created: 2026-04-27
 updated: 2026-04-27
 model: llama3-8b-jax
-status: open
-expected_gain: "+2-4 % step time"
+status: refuted
+expected_gain: "+2-4 % step time (claimed) — invalidated by 2026-04-27 HLO inspection"
 confidence: medium
 effort: L
 origin: jax-exp28b-profile-2026-04-26
 ---
 
 Custom Pallas TPU kernel that fuses **`silu(g) * u` (SwiGLU) into the `down_proj` matmul prologue** so the MLP intermediate `silu(g)*u` (4 × 8192 × 14336 bf16 ≈ 939 MiB/layer/chip × 32 layers = 30 GiB/step of HBM traffic) never round-trips through HBM. Targets the 9.2 % loop-fusion line in [exp 28b's profile](../experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md#profile).
+
+> [!warning] **Refuted 2026-04-27** — HLO inspection of exp 28b shows XLA already fuses this. The down-proj fusion (`%fusion.323 = ... kind=kOutput, calls=%fused_computation.40`) contains: an inner `%fusion.311 = ... calls=%fused_computation.8` that does `silu(g) * u` (negate→exp→add→divide→multiply, then multiply with `u`), the `%convolution.111` down-proj matmul reading `fusion.311`'s output directly, and a final `%add.856` residual add. **One single Mosaic `kind=kOutput` kernel** that takes `g, u, down_proj_weight, residual` and emits `hidden_state` — exactly the kernel this hypothesis proposed to write. The pallas-forge 0.65× v5e result mentioned in the original Risks was a leading indicator: XLA's TPU fuser already does this work. **Hypothesis withdrawn.** See `raw/profiles/2026-04-27-jax-hlodump-exp28b/module_0262.jit_train_step.cl_854318611.after_optimizations.hlo` (extracted to local `/tmp/hlo-exp28b-renamed/`) for the HLO evidence — search for `fused_computation.8` (the silu*u body) and `fused_computation.40` (the outer SwiGLU+down_proj+residual fusion).
 
 ## Statement
 
