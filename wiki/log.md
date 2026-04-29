@@ -1,5 +1,27 @@
 # Log
 
+## [2026-04-29] formulate | Seed 5 serving optimization hypotheses
+
+**Op**: formulate
+**Pages created**: `wiki/hypotheses/prefix-caching-multi-turn-agentic.md`, `wiki/hypotheses/sglang-radx-vs-vllm-agentic.md`, `wiki/hypotheses/chunked-prefill-high-concurrency.md`, `wiki/hypotheses/speculative-decoding-cot.md`, `wiki/hypotheses/fp8-quantization-throughput.md`
+**Pages updated**: `wiki/index.md` (added ranked hypotheses table)
+**Key result**: 5 seed hypotheses created spanning 3 optimization axes: KV cache efficiency (prefix caching, RadixAttention, FP8 memory savings), scheduling (chunked prefill), and decode acceleration (speculative decoding). Ranked by expected_gain × confidence / effort.
+**Notes**: All hypotheses target open-source engines (vLLM, SGLang). Model names left blank — fill when specific model is chosen. TensorRT-LLM hypotheses deferred until engine is better understood.
+
+## [2026-04-29] manual | Created benchmark harness and infrastructure
+
+**Op**: manual
+**Pages created**: `benchmark_harness.py`, `raw/benchmarks/.gitkeep`
+**Pages updated**: `.gitignore` (added `raw/benchmarks/*` rule with `.gitkeep` exception)
+**Key result**: Benchmark harness script that can launch vLLM/SGLang, run a workload at multiple concurrency levels, parse metrics from stdout, and write structured JSON to `raw/benchmarks/`. Supports all 5 workload profiles defined in `wiki/workloads/`.
+**Notes**: Harness is a starting point — will need extension for TensorRT-LLM (uses Triton's perf_analyzer) and for multi-turn request patterns (current benchmark tools assume single-turn). Metrics parsing is best-effort; may need engine-specific parsers.
+
+**Op**: manual
+**Pages created**: `wiki/engines/vllm.md`, `wiki/engines/sglang.md`, `wiki/engines/tensorrt-llm.md`, `wiki/workloads/multi-turn-agentic.md`, `wiki/workloads/parallel-tool-use.md`, `wiki/workloads/long-context-rag.md`, `wiki/workloads/chain-of-thought.md`, `wiki/workloads/structured-output.md`
+**Pages updated**: `SCHEMA.md` (reframed scope, added engine/workload page types, added RUN-BENCHMARK operation, updated naming conventions), `wiki/index.md` (added Engines and Workloads sections), `wiki/log.md` (this entry)
+**Key result**: Repo scope broadened from TPU-only training optimization to include LLM serving engine optimization (vLLM, SGLang, TensorRT-LLM) targeting high-concurrency agentic AI workloads. New page types (engine, workload) and operations (RUN-BENCHMARK) added to SCHEMA.md. 8 new wiki pages created (3 engine stubs + 5 workload profiles).
+**Notes**: Submodule additions (vllm, sglang, tensorrt-llm) deferred — large repos, add when ready for ingestion. Existing TPU training content preserved as-is.
+
 ## [2026-04-27] HLO inspection | jax Llama 3 8B v6e-8 — hypotheses #2 and #3 (Pallas RMSNorm+matmul, Pallas SwiGLU+down_proj) refuted by HLO before kernel-write; XLA already does both fusions
 
 **Op**: HLO dump + inspection (one short run with `XLA_FLAGS="--xla_dump_to=/tmp/hlo --xla_dump_hlo_as_text"`) + analysis via `mcp__xprof__list_hlo_dump_modules` and grep over `module_0262.jit_train_step.cl_854318611.after_optimizations.hlo`.

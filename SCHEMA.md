@@ -1,10 +1,10 @@
-# TPU Model Performance Auto-optimization — Schema & Operating Rules
+# LLM Serving Performance Auto-optimization — Schema & Operating Rules
 
 *(Autoresearch methodology; see [README](README.md) for the project intro.)*
 
-You maintain a knowledge base in service of an **automated optimization loop** for TPU model performance. The loop is: ingest knowledge (papers, docs, codebases, profiles) → formulate ranked hypotheses → run experiments → record observations → update priors → formulate next hypotheses. Your job is to write and maintain every file. The human curates sources, sets optimization targets, approves experiments, and arbitrates contradictions.
+You maintain a knowledge base in service of an **automated optimization loop** for LLM serving engine performance. The loop is: ingest knowledge (papers, docs, codebases, profiles, benchmarks) → formulate ranked hypotheses → run experiments → record observations → update priors → formulate next hypotheses. Your job is to write and maintain every file. The human curates sources, sets optimization targets, approves experiments, and arbitrates contradictions.
 
-**Scope:** step time, MFU, tokens/sec, memory, and everything that affects them on TPU — compiler flags, parallelism, rematerialization, attention kernels, layout, fusion, scheduling, precision. Out of scope: model quality/convergence. An optimization that changes model semantics is **invalid** — note the invalidation, do not report the speedup.
+**Scope:** throughput (requests/sec, tokens/sec), latency (TTFT, TPOT, E2E), concurrency, KV cache utilization, memory, and everything that affects them in LLM serving — batching strategies, scheduling policies, attention backends, quantization, CUDA graphs, prefix caching, chunked prefill, tensor/pipeline parallelism, disaggregated serving, speculative decoding. Both GPU (NVIDIA) and TPU paths are in scope. Out of scope: model quality/convergence. An optimization that changes model semantics is **invalid** — note the invalidation, do not report the speedup.
 
 **Independence:** this wiki is self-contained. Do **not** read from or link into any sibling wiki. All state lives under the paths below.
 
@@ -24,14 +24,17 @@ tpu_performance_autoresearch_wiki/     ← project root (agent CWD)
     codebases/                         ← one page per ingested repo (plus subpages)
     concepts/                          ← techniques, abstractions, flags, kernels
     models/                            ← each model under optimization (inputs + SOTA target)
+    engines/                           ← one page per serving engine (vllm, sglang, tensorrt-llm)
+    workloads/                         ← agentic workload profiles (multi-turn, tool-use, etc.)
     hypotheses/                        ← ranked candidate optimizations, not yet run
-    experiments/                       ← runs: config, profile link, metrics, verdict
-    observations/                      ← reusable findings pulled from profiles/runs
+    experiments/                       ← runs: config, benchmark link, metrics, verdict
+    observations/                      ← reusable findings pulled from profiles/benchmarks
     analyses/                          ← syntheses, comparisons, reports you're asked to write
   raw/
     sources/                           ← immutable source files (PDFs, HTML, etc.)
     code/                              ← checked-out or symlinked repos
-    profiles/                          ← xprof traces, HLO dumps (immutable)
+    profiles/                          ← profiling traces (xprof, Nsight, etc.) (immutable)
+    benchmarks/                        ← benchmark results, configs, request traces (immutable)
     assets/                            ← images, figures, plots
 ```
 
@@ -74,7 +77,7 @@ Every wiki page starts with YAML frontmatter. Minimum fields (extend per page ty
 ```yaml
 ---
 title: "<page title>"
-type: source | codebase | concept | model | hypothesis | experiment | observation | analysis
+type: source | codebase | concept | model | engine | workload | hypothesis | experiment | observation | analysis
 tags: [...]
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -123,15 +126,51 @@ An optimization technique, hardware feature, compiler pass, flag, kernel, or abs
 ### model  (`wiki/models/<slug>.md`)
 A model under optimization. This is a **live page** — it tracks the current best configuration and open questions.
 - H2: Target metrics, Hardware, How to run (verbatim command), Baseline, Current best, Known bottlenecks, Open hypotheses, Retired hypotheses, History.
-- `Baseline` and `Current best` are tables: step time, MFU, tokens/sec, peak HBM, config hash, date, link to experiment page.
+- `Baseline` and `Current best` are tables with both training and serving columns:
+  - **Training**: step time, MFU, tokens/sec, peak HBM.
+  - **Serving**: throughput (req/s, tokens/s), TTFT p50/p99, TPOT p50/p99, max concurrency, KV cache utilization, config hash, date, link to experiment page.
 - Only this page and `hypotheses/*` track "open questions" — keep them consistent.
+
+### engine  (`wiki/engines/<slug>.md`)
+An LLM serving engine under study (e.g., vllm, sglang, tensorrt-llm).
+- H2: Overview, Architecture (scheduler, KV cache manager, batching strategy), Key abstractions, Entry points, Serving-relevant surfaces, Tunable knobs, Supported models, Known strengths/weaknesses, Connections.
+- **Serving-relevant surfaces** is mandatory — list the knobs, flags, config parameters that optimization hypotheses will touch, with file/line references:
+  - Scheduler: max_num_seqs, max_num_batched_tokens, scheduling_policy
+  - KV cache: block_size, gpu_memory_utilization, swap_space, enable_prefix_caching
+  - Batching: max_num_batched_tokens, enable_chunked_prefill
+  - Parallelism: tensor_parallel_size, pipeline_parallel_size, data_parallel_size
+  - Quantization: quantization method, dtype
+  - CUDA graphs: enforce_eager, num_cudagraph_capture_sizes
+- Record the exact commit SHA ingested in frontmatter: `commit: <sha>`.
+
+### workload  (`wiki/workloads/<slug>.md`)
+An agentic AI workload profile defining request patterns for benchmarking.
+- H2: Overview, Request pattern, Concurrency characteristics, Representative benchmark config, Metrics of interest, Connections.
+- **Request pattern** describes the shape of requests:
+  - Input length distribution (mean, p50, p99, max)
+  - Output length distribution (mean, p50, p99, max)
+  - Multi-turn conversation patterns (turn count, context growth rate)
+  - Tool-use patterns (parallel tool calls, structured output requirements)
+- **Concurrency characteristics**:
+  - Target concurrency levels (steady-state, burst)
+  - Request arrival pattern (Poisson, constant, bursty)
+  - Session affinity requirements (prefix reuse across turns)
+- **Representative benchmark config**: verbatim command or config file for the engine's benchmark tool.
+- Example workloads:
+  - `multi-turn-agentic.md` — agent loops with tool calls, growing context
+  - `parallel-tool-use.md` — single prompt spawning many concurrent tool calls
+  - `long-context-rag.md` — long prompt with retrieved context, short output
+  - `chain-of-thought.md` — short prompt, long output reasoning
+  - `structured-output.md` — JSON schema enforcement patterns
 
 ### hypothesis  (`wiki/hypotheses/<slug>.md`)
 A candidate optimization, pre-experiment. Frontmatter adds:
 ```yaml
 model: <model-slug>
+engine: <engine-slug>          # optional — set when hypothesis is engine-specific
+workload: <workload-slug>      # optional — set when hypothesis is workload-specific
 status: open | in_progress | supported | refuted | inconclusive | retired
-expected_gain: "<e.g. 5-15% step time>"
+expected_gain: "<e.g. 5-15% throughput at concurrency=64>"
 confidence: low | medium | high
 effort: S | M | L
 origin: <source-slug or observation-slug or human>
@@ -144,19 +183,26 @@ A single run (or minimal set of comparable runs) testing a hypothesis. Frontmatt
 ```yaml
 hypothesis: <hypothesis-slug>
 model: <model-slug>
+engine: <engine-slug>           # optional — set for serving experiments
+workload: <workload-slug>       # optional — set for serving experiments
 commit: <model-repo-sha>
 verdict: supported | refuted | inconclusive | invalid
 ```
-- H2: Hypothesis under test, Setup (hardware, env, conda env, exact command — copy from model page and diff the changed flags), Baseline comparison, Results (table: metric × baseline × this run × delta × noise band), **Profile** (see below), Observations (links to observation pages produced), Verdict + reasoning, Next hypotheses (links).
-- **Profile section is mandatory whenever the run actually executed.** It must carry:
-  - (a) a **direct clickable browser URL into the xprof UI** for the run (e.g., `http://localhost:8791/?run=<run-name>` when a local xprof server is configured; use the project's documented base URL otherwise). This lets the reviewer jump straight to the interactive trace viewer.
-  - (b) the **run name** as it appears in the xprof server (typically the GCS/logdir subdirectory name).
-  - (c) the exact on-disk directory path under `raw/profiles/<YYYY-MM-DD>-<exp-slug>/`, **as a relative markdown link** from the experiment page so editors can click through to the trace folder.
-  - (d) which steps were captured (the `profile_steps` value or equivalent).
-  - (e) a one-line description of what's inside (xprof trace, HLO dump, memory profile, etc.).
-  - (f) the same `raw/profiles/...` path repeated in `## Sources`.
-  
-  Profiles are **gitignored** (multi-GB binary artifacts — see `.gitignore`), so this page is the sole persistent link between the trace on disk and the experiment that produced it. If the run was not executed (e.g., an infrastructure-only dry check, or a crash before step 0), omit the section and note the reason in `## Verdict`.
+- H2: Hypothesis under test, Setup (hardware, env, exact command — copy from model page and diff the changed flags), Baseline comparison, Results (table: metric × baseline × this run × delta × noise band), **Profile / Benchmark** (see below), Observations (links to observation pages produced), Verdict + reasoning, Next hypotheses (links).
+
+**For training experiments**, the results table uses: step time, MFU, tokens/sec, peak HBM.
+
+**For serving experiments**, the results table uses: throughput (req/s, input tokens/s, output tokens/s), TTFT (p50, p90, p99), TPOT (p50, p90, p99), E2E latency (p50, p90, p99), max concurrency achieved, KV cache utilization (%), GPU memory utilization (%).
+
+- **Profile / Benchmark section is mandatory whenever the run actually executed.** It must carry:
+  - (a) a **direct clickable browser URL** for the profiling UI — for training runs this is the xprof URL; for serving runs this is the Prometheus/Grafana dashboard, Nsight Systems report, or the engine's built-in metrics endpoint.
+  - (b) the exact on-disk directory path under `raw/profiles/<YYYY-MM-DD>-<exp-slug>/` (for profiling traces) or `raw/benchmarks/<YYYY-MM-DD>-<exp-slug>/` (for benchmark results), **as a relative markdown link** from the experiment page.
+  - (c) the benchmark command and workload config used (for serving experiments, include the request trace or synthetic workload parameters).
+  - (d) which concurrency levels were tested (for serving experiments).
+  - (e) a one-line description of what's inside (xprof trace, Nsight trace, Prometheus dump, benchmark JSON, etc.).
+  - (f) the same path repeated in `## Sources`.
+
+  Profiles and benchmarks are **gitignored** (multi-GB binary artifacts — see `.gitignore`), so this page is the sole persistent link between the data on disk and the experiment that produced it. If the run was not executed (e.g., an infrastructure-only dry check, or a crash before step 0), omit the section and note the reason in `## Verdict`.
 - `invalid` is the verdict when the experiment changed model semantics or was otherwise unsound; in that case the measured speedup is **not reported** as a win.
 - Experiments are immutable once filed — if you rerun, file a new experiment and link them.
 
@@ -218,6 +264,21 @@ Trigger: human approves a hypothesis for testing (or asks "run the top hypothesi
 7. Update the hypothesis (`status:`, link to experiment), update the model page (`Current best` if this wins, ranked list if new hypotheses were generated).
 8. Update `index.md` and `log.md`.
 
+### RUN-BENCHMARK
+
+Trigger: human approves a serving hypothesis for testing, or asks to benchmark an engine configuration.
+
+1. Read the hypothesis (if any), the engine page, the workload page, and the model page. Resolve any ambiguity **before running**.
+2. Prepare the serving engine: copy the baseline launch command from the engine/model page, diff only the config parameters the hypothesis changes. Record the diff.
+3. Launch the serving engine with the specified configuration. Wait for readiness.
+4. Run the benchmark using the workload's representative benchmark config against the running engine. Sweep concurrency levels if the hypothesis spans them.
+5. Capture results to `raw/benchmarks/<YYYY-MM-DD>-<exp-slug>/`. Include: benchmark tool output (JSON), engine metrics snapshot (Prometheus dump if available), any profiling traces (Nsight, etc.) to `raw/profiles/`.
+6. **Validate outputs** — spot-check a sample of responses against baseline for correctness/quality. If output quality degrades, verdict is `invalid`.
+7. Write `wiki/experiments/<YYYY-MM-DD>-<slug>.md` with full serving results table (throughput, TTFT, TPOT, E2E at each concurrency level).
+8. Extract `observation` pages for any finding that may recur (e.g., "KV cache thrashing begins at concurrency > N for this model", "prefix caching benefit plateaus at context reuse > 75%").
+9. Update the hypothesis (`status:`, link to experiment), update the model page, update the engine page if a new best config is found.
+10. Update `index.md` and `log.md`.
+
 ### RECORD-OBSERVATION
 
 Trigger: you notice something in a profile or run that doesn't belong to a single experiment's narrative.
@@ -256,16 +317,22 @@ Fix mechanical issues automatically; flag judgment calls for the human.
 ## index.md conventions
 
 ```markdown
-# TPU Model Performance Auto-optimization — Index
+# LLM Serving Performance Auto-optimization — Index
 *Last updated: YYYY-MM-DD — N pages*
+
+## Engines (N)
+- [<engine>](engines/<slug>.md) — one-line status: "baseline X req/s, current best Y req/s at concurrency=64"
+
+## Workloads (N)
+- [<workload>](workloads/<slug>.md) — one-line description of the request pattern
 
 ## Models (N)
 - [<model>](models/<slug>.md) — one-line status: "baseline 420ms/step, current best 310ms/step, 3 open hypotheses"
 
 ## Hypotheses — ranked, open only (N)
-| # | Hypothesis | Model | Expected | Confidence | Effort |
-|---|---|---|---|---|---|
-| 1 | [<slug>](hypotheses/<slug>.md) | ... | 10-20% | high | M |
+| # | Hypothesis | Engine | Model | Workload | Expected | Confidence | Effort |
+|---|---|---|---|---|---|---|---|
+| 1 | [<slug>](hypotheses/<slug>.md) | ... | ... | ... | 10-20% | high | M |
 
 ## Experiments (N)
 - [YYYY-MM-DD <slug>](experiments/YYYY-MM-DD-<slug>.md) — verdict — one-line delta
@@ -295,7 +362,7 @@ Append-only, **newest first**. One entry per operation:
 ```markdown
 ## [YYYY-MM-DD] <op> | <subject>
 
-**Op**: ingest-source | ingest-codebase | formulate | run-experiment | record-observation | analyze | lint | manual
+**Op**: ingest-source | ingest-codebase | formulate | run-experiment | run-benchmark | record-observation | analyze | lint | manual
 **Pages created**: ...
 **Pages updated**: ...
 **Key result**: (for run-experiment: verdict + headline metric delta)
@@ -314,12 +381,15 @@ Grepping the log: `grep "^## \[" wiki/log.md | head -20` → last 20 events.
 | Codebase pages | `<slug>.md` (+ `<slug>/<subpage>.md`) | `torchtitan.md`, `torchtitan/fsdp.md` |
 | Concept pages | `<slug>.md` | `rematerialization.md` |
 | Model pages | `<slug>.md` | `llama3-8b-torchtitan-jax.md` |
-| Hypothesis pages | `<slug>.md` | `flash-attention-block-2048.md` |
-| Experiment pages | `<YYYY-MM-DD>-<slug>.md` | `2026-04-22-remat-offload-query.md` |
-| Observation pages | `<slug>.md` | `fsdp-allgather-overlap-gap.md` |
-| Analysis pages | `<YYYY-MM-DD>-<slug>.md` | `2026-04-22-v6e-vs-v5p-llama.md` |
+| Engine pages | `<slug>.md` | `vllm.md`, `sglang.md`, `tensorrt-llm.md` |
+| Workload pages | `<slug>.md` | `multi-turn-agentic.md`, `parallel-tool-use.md` |
+| Hypothesis pages | `<slug>.md` | `prefix-caching-agentic.md` |
+| Experiment pages | `<YYYY-MM-DD>-<slug>.md` | `2026-04-22-prefix-cache-vllm.md` |
+| Observation pages | `<slug>.md` | `kv-cache-thrashing-concurrency.md` |
+| Analysis pages | `<YYYY-MM-DD>-<slug>.md` | `2026-04-22-vllm-vs-sglang-agentic.md` |
 | Raw sources | `raw/sources/<year>-<slug>.<ext>` | `raw/sources/2022-flash-attention.pdf` |
 | Raw profiles | `raw/profiles/<YYYY-MM-DD>-<exp-slug>/` | directory per experiment |
+| Raw benchmarks | `raw/benchmarks/<YYYY-MM-DD>-<exp-slug>/` | directory per benchmark run |
 | Slugs | lowercase, hyphens only | |
 
 ---

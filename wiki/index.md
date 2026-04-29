@@ -1,7 +1,28 @@
-# TPU Model Performance Auto-optimization — Index
-*Last updated: 2026-04-26 — 192 pages (27 codebases + 45 sources + 96 concepts + 2 model-programs + 4 analyses + 6 analysis subpages + jax-exp47 rejected page + 2 maxtext baseline experiments + 1 torchax llama3-8b baseline + 1 torchax llama3-8b splash kernel-only autotune + 1 jax-llama3-8b SparseCore-offload frontier)*
+# LLM Serving Performance Auto-optimization — Index
+*Last updated: 2026-04-29 — 192 + 13 new pages (3 engines + 5 workloads + 5 hypotheses)*
 
-*Methodology: autoresearch (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
+*Methodology: autoresearch extended for serving (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
+
+## Engines (3)
+- [vLLM](engines/vllm.md) — PagedAttention-based serving engine; stub, awaiting ingestion
+- [SGLang](engines/sglang.md) — RadixAttention serving engine with automatic prefix caching; stub, awaiting ingestion
+- [TensorRT-LLM](engines/tensorrt-llm.md) — NVIDIA's TensorRT-optimized serving engine; stub, awaiting ingestion
+
+## Workloads (5)
+- [Multi-Turn Agentic](workloads/multi-turn-agentic.md) — agent loops with tool calls, growing context, high prefix reuse
+- [Parallel Tool Use](workloads/parallel-tool-use.md) — burst of parallel requests sharing long prefix, short output
+- [Long Context RAG](workloads/long-context-rag.md) — long input (10K–128K), short output; stresses prefill and KV cache capacity
+- [Chain-of-Thought](workloads/chain-of-thought.md) — short input, long output (1K–16K); stresses decode throughput
+- [Structured Output](workloads/structured-output.md) — JSON/schema-constrained decoding; measures constraint overhead
+
+## Hypotheses — ranked, open only (5)
+| # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
+|---|---|---|---|---|---|---|
+| 1 | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM | multi-turn-agentic | 20-40% throughput | high | S |
+| 2 | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md) | vLLM | multi-turn-agentic | 50-80% more concurrency | high | S |
+| 3 | [SGLang RadixAttention vs vLLM](hypotheses/sglang-radx-vs-vllm-agentic.md) | SGLang | multi-turn-agentic | 15-30% vs vLLM | medium | M |
+| 4 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
+| 5 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
 
 ## ⭐ Featured reference — Pallas kernel directory
 

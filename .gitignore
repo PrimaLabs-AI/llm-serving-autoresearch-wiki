@@ -215,6 +215,8 @@ __marimo__/
 # .gitkeep so relative links don't break.
 raw/profiles/*
 !raw/profiles/.gitkeep
+raw/benchmarks/*
+!raw/benchmarks/.gitkeep
 # Exception: kernel-only autotune artifacts (CSV + small stdout logs) are
 # small enough to track and are the canonical persistent record of those
 # runs (no xprof trace is captured for kernel-only sweeps).
