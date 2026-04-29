@@ -14,7 +14,7 @@ The claim is structural, not incremental: **given a sufficiently capable LLM, th
 
 ### 🔁 Autoresearch — specialized to TPU perf
 
-**Autoresearch** — introduced in [Karpathy's autoresearch github repo](https://github.com/karpathy/autoresearch) — is a methodology for letting an LLM agent run an open-ended research program: propose ranked hypotheses, run experiments, evaluate outcomes, revise priors, feed what it learned into the next round. The methodology is **domain-agnostic** — any question you can frame as a ranked set of falsifiable experiments with measurable outcomes is a candidate. Karpathy's original target was LLM pretraining *quality* (architectural and optimizer tweaks judged by loss); **this repository specializes the same loop to TPU model *performance*** — wall-clock step time, tokens/sec, MFU, memory budget.
+**Autoresearch** — introduced in [Andrej Karpathy's autoresearch github repo](https://github.com/karpathy/autoresearch) — is a methodology for letting an LLM agent run an open-ended research program: propose ranked hypotheses, run experiments, evaluate outcomes, revise priors, feed what it learned into the next round. The methodology is **domain-agnostic** — any question you can frame as a ranked set of falsifiable experiments with measurable outcomes is a candidate. Karpathy's original target was LLM pretraining *quality* (architectural and optimizer tweaks judged by loss); **this repository specializes the same loop to TPU model *performance*** — wall-clock step time, tokens/sec, MFU, memory budget.
 
 Applied in this repo, the loop runs continuously: **hypothesis → minimal code diff → benchmark on real hardware → profile + HLO capture → op-by-op diff against the prior best → profile-grounded verdict → writeup + ledger row → next round.** Every experiment, winning or losing, is recorded as context for the next hypothesis and submitted to a separate git branch. Successful experiments are built on top of each other creating a hierarchical tree of ideas that play best together. The discipline is what makes the loop compound rather than oscillate — each experiment permanently improves the priors for the next one. The rest of this section describes the supporting components that make that discipline possible in the TPU-perf domain.
 
@@ -117,6 +117,8 @@ flowchart TB
 
 Point it at a model and act as reviewer — you approve hypotheses, arbitrate contradictions, and audit the trail; the agent does the reading, profiling, experimenting, and learning. Every cycle leaves the wiki smarter than before, so the next cycle starts from a better prior.
 
+**Beyond TPU performance.** This repo extends the original autoresearch idea into a more general architecture: **autoresearch is an optimization loop** that proposes ranked, falsifiable experiments; **the wiki is a knowledge base** of domain information that informs hypothesis generation and experiment design (papers, codebases, concepts, and the running record of what's been tried); and **the MCP server is an observer** that grounds each iteration in real signal. The observer is the domain-specific piece — it's what raises the signal-to-noise of every measurement the loop makes, and without it the loop degenerates into flag-guessing.
+
 ## What this unlocks
 
 - **Optimization that feels like cheating.** Describe a goal in a sentence. Come back to a configuration at or near the hardware's achievable ceiling, with a linked research trail showing every experiment that led there. The LLM picks the right experiments because it has read the right papers, studied the right code, and learned from every prior experiment it ran on this model.
@@ -174,16 +176,22 @@ To run the optimization loop against your own model:
 1. Add the model's training repo as a submodule: `git submodule add <url> raw/code/<slug>`
 2. Ask the agent to ingest it: *"Ingest raw/code/<slug> as a codebase page, highlighting performance-relevant surfaces."*
 3. Create a model page under `wiki/models/<slug>.md` with baseline metrics and a hardware target.
-4. Ask the agent: *"Formulate the top 5 optimization hypotheses for this model on v6e-4, ranked by expected gain × confidence / effort."*
-5. Approve the hypotheses you want; the agent runs each, profiles it, and files the result before proposing the next round.
+4. Ask the agent: *"Adapt the original autoresearch idea to optimize the model located at raw/code/<slug>. Refer to other experiments and documentation in this wiki to generate a program.md most suitable to my codebase."*
+5. Check your program.md file to see if it requires any modifications for your use case.
+6. Ask the agent: *"Start model optimization in accordance with the protocol described in raw/code/<slug>/program.md"*
 
 The rest is iteration.
 
-For a worked case study, see [`wiki/experiments/gemma4_autoresearch_optimization/`](wiki/experiments/gemma4_autoresearch_optimization/) — browse the experiment pages in chronological order to see the loop in action. For a sample autoresearch prompt, see [`program.md`](wiki/experiments/gemma4_autoresearch_optimization/program.md) in that same directory.
+For a worked case study, see [`wiki/experiments/llama3_8B_autoresearch_optimization/`](wiki/experiments/llama3_8B_autoresearch_optimization/) — browse the experiment pages in chronological order to see the loop in action. For a sample autoresearch prompt, see [`program.md`](wiki/experiments/llama3_8B_autoresearch_optimization/program.md) in that same directory.
 
 Like autoresearch itself, this repo isn't meant to be used as-is — it provides a structure and starting point you adapt to your own model and codebase.
 
 The optimization loop runs on either a [Cloud TPU VM](https://cloud.google.com/tpu/docs/create-tpu-vm) or a [GKE TPU cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus). If you're reading this, the assumption is that you're already familiar with those.
+
+To teach your agent to use your GKE cluster, paste prompts like these:
+- *"Use this cluster for experiments: name=... region=... project=..."*
+- *"Check the cluster topology and number of slices available to see if you can run multiple experiments in parallel."*
+- *"Save cluster information under the .env folder for future reference."*
 
 ---
 
