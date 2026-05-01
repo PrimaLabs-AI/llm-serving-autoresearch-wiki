@@ -136,9 +136,6 @@ celerybeat.pid
 
 # Environments
 .env
-!.env/
-.env/*
-!.env/.gitkeep
 .envrc
 .venv
 env/
