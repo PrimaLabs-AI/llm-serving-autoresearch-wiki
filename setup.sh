@@ -6,6 +6,7 @@
 #   ./setup.sh                          # install everything
 #   ./setup.sh --engines vllm,sglang    # install only specific engines
 #   ./setup.sh --skip-claude            # skip Claude Code installation
+#   ./setup.sh --docker                 # use Docker containers instead of pip install
 #   ./setup.sh --skip-tensorrt          # skip TensorRT-LLM (requires NVIDIA repo)
 #
 # Tested on: Ubuntu 22.04 with NVIDIA A100/H100 GPUs
@@ -27,6 +28,7 @@ INSTALL_VLLM=true
 INSTALL_SGLANG=true
 INSTALL_TRTLLM=true
 INSTALL_CLAUDE=true
+USE_DOCKER=false
 SKIP_REPO=false
 
 # ---------------------------------------------------------------------------
@@ -41,6 +43,7 @@ usage() {
     echo "  --skip-claude        Skip Claude Code installation"
     echo "  --skip-repo          Skip repo clone (already cloned)"
     echo "  --skip-tensorrt      Skip TensorRT-LLM installation"
+    echo "  --docker             Use Docker containers instead of pip install"
     echo "  -h, --help           Show this help"
     echo ""
     echo "Examples:"
@@ -67,6 +70,7 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --skip-claude) INSTALL_CLAUDE=false ;;
+        --docker) USE_DOCKER=true ;;
         --skip-repo) SKIP_REPO=true ;;
         --skip-tensorrt) INSTALL_TRTLLM=false ;;
         -h|--help) usage; exit 0 ;;
@@ -164,6 +168,72 @@ setup_venv() {
 }
 
 # ---------------------------------------------------------------------------
+# Docker setup
+# ---------------------------------------------------------------------------
+
+install_docker() {
+    if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+        log "Docker + Docker Compose already installed."
+        return 0
+    fi
+
+    log "Installing Docker + Docker Compose..."
+
+    # Install Docker
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo usermod -aG docker "${USER}"
+
+    # Install Docker Compose plugin
+    sudo apt-get install -y -qq docker-compose-plugin 2>/dev/null || \
+        sudo mkdir -p /usr/local/lib/docker/cli-plugins && \
+        sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+        sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+    log "Docker installed: $(docker --version)"
+    log "Docker Compose installed: $(docker compose version)"
+
+    # NVIDIA Container Toolkit (required for GPU passthrough)
+    if ! dpkg -l nvidia-container-toolkit &>/dev/null; then
+        log "Installing NVIDIA Container Toolkit..."
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+            sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+            sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq nvidia-container-toolkit
+        sudo nvidia-ctk runtime configure --runtime=docker
+        sudo systemctl restart docker
+        log "NVIDIA Container Toolkit installed."
+    fi
+}
+
+pull_engine_images() {
+    log "Pulling engine Docker images..."
+
+    $INSTALL_VLLM && {
+        log "Pulling vLLM image..."
+        docker pull vllm/vllm-openai:latest
+    }
+
+    $INSTALL_SGLANG && {
+        log "Pulling SGLang image..."
+        docker pull sglang/sglang:latest
+    }
+
+    $INSTALL_TRTLLM && {
+        log "Pulling TensorRT-LLM image..."
+        docker pull nvcr.io/nvidia/tensorrt-llm:latest
+    }
+
+    log "Building benchmark orchestrator image..."
+    docker compose build benchmark
+
+    log "All images ready."
+}
+
+# ---------------------------------------------------------------------------
 # Serving engines
 # ---------------------------------------------------------------------------
 
@@ -257,15 +327,43 @@ print_summary() {
     echo "========================================================"
     echo ""
     echo "  Repo:       $(pwd)"
-    echo "  Engines:"
-    $INSTALL_VLLM  && echo "    - vLLM:     $(python -c 'import vllm; print(vllm.__version__)' 2>/dev/null || echo 'installed')"
-    $INSTALL_SGLANG && echo "    - SGLang:   $(python -c 'import sglang; print(sglang.__version__)' 2>/dev/null || echo 'installed')"
-    $INSTALL_TRTLLM && echo "    - TRT-LLM:  installed"
+    if $USE_DOCKER; then
+        echo "  Mode:       Docker"
+        echo "  Engines:"
+        $INSTALL_VLLM  && echo "    - vLLM:     docker compose up vllm"
+        $INSTALL_SGLANG && echo "    - SGLang:   docker compose up sglang"
+        $INSTALL_TRTLLM && echo "    - TRT-LLM:  docker compose --profile trt-llm up trt-llm"
+    else
+        echo "  Mode:       Native (pip)"
+        echo "  Engines:"
+        $INSTALL_VLLM  && echo "    - vLLM:     $(python -c 'import vllm; print(vllm.__version__)' 2>/dev/null || echo 'installed')"
+        $INSTALL_SGLANG && echo "    - SGLang:   $(python -c 'import sglang; print(sglang.__version__)' 2>/dev/null || echo 'installed')"
+        $INSTALL_TRTLLM && echo "    - TRT-LLM:  installed"
+    fi
     $INSTALL_CLAUDE && echo "    - Claude:   $(claude --version 2>/dev/null || echo 'installed')"
     echo ""
-    echo "  Quick start:"
-    echo "    source venv/bin/activate"
-    echo "    claude"
+    if $USE_DOCKER; then
+        echo "  Quick start (Docker):"
+        echo "    # 1. Configure model"
+        echo "    cp .env.example .env && vi .env"
+        echo ""
+        echo "    # 2. Start an engine"
+        echo "    docker compose up -d vllm"
+        echo ""
+        echo "    # 3. Run benchmark"
+        echo "    docker compose run --rm benchmark \\"
+        echo "      --engine vllm --model \$MODEL \\"
+        echo "      --workload multi-turn-agentic --skip-server \\"
+        echo "      --output-dir raw/benchmarks/\$(date +%Y-%m-%d)-vllm-test"
+        echo ""
+        echo "    # Or: interactive shell with Claude Code"
+        echo "    docker compose run --rm -it benchmark-shell"
+        echo "    # Then inside: claude"
+    else
+        echo "  Quick start:"
+        echo "    source venv/bin/activate"
+        echo "    claude"
+    fi
     echo ""
     echo "  Then tell the agent:"
     echo "    'Run hypothesis #1 — prefix caching in vLLM for multi-turn"
@@ -297,25 +395,35 @@ main() {
 
     install_system_deps
     clone_repo
-    setup_venv
 
-    # Install engines
-    if $INSTALL_VLLM; then
-        install_vllm
+    if $USE_DOCKER; then
+        # Docker mode: engines run in containers, only need Docker + Claude Code
+        log "Using Docker mode — engines will run in containers."
+        install_docker
+        setup_venv  # lightweight venv for the benchmark harness only
+        pip install httpx requests pydantic rich  # minimal client deps
+        pull_engine_images
     else
-        info "Skipping vLLM (--engines filter)"
-    fi
+        # Native mode: install engines directly via pip
+        setup_venv
 
-    if $INSTALL_SGLANG; then
-        install_sglang
-    else
-        info "Skipping SGLang (--engines filter)"
-    fi
+        if $INSTALL_VLLM; then
+            install_vllm
+        else
+            info "Skipping vLLM (--engines filter)"
+        fi
 
-    if $INSTALL_TRTLLM; then
-        install_trtllm
-    else
-        info "Skipping TensorRT-LLM (--skip-tensorrt or --engines filter)"
+        if $INSTALL_SGLANG; then
+            install_sglang
+        else
+            info "Skipping SGLang (--engines filter)"
+        fi
+
+        if $INSTALL_TRTLLM; then
+            install_trtllm
+        else
+            info "Skipping TensorRT-LLM (--skip-tensorrt or --engines filter)"
+        fi
     fi
 
     # Install Claude Code

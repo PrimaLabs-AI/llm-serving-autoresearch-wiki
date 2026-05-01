@@ -1,0 +1,38 @@
+# Benchmark orchestrator container
+# - Runs benchmark_harness.py against engine containers
+# - Has the wiki repo mounted for reading workloads and writing results
+# - Claude Code can run inside this container
+#
+# Build:  docker build -t benchmark-orchestrator -f docker/Dockerfile.benchmark .
+# Run:    see docker-compose.yml
+
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code
+RUN npm install -g @anthropic-ai/claude-code
+
+WORKDIR /workspace
+
+# Copy requirements and install
+COPY requirements-benchmark.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements-benchmark.txt
+
+# Copy benchmark harness and wiki structure
+COPY benchmark_harness.py .
+COPY SCHEMA.md .
+COPY CLAUDE.md .
+COPY GEMINI.md .
+COPY wiki/ wiki/
+
+# Benchmark results and raw data as volumes
+VOLUME /workspace/raw/benchmarks
+VOLUME /workspace/raw/profiles
+
+ENTRYPOINT ["python", "benchmark_harness.py"]

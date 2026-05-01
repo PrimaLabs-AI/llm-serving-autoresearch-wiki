@@ -1,0 +1,8 @@
+# Requirements for the benchmark orchestrator container.
+# These are the client-side libraries needed to talk to the engines
+# and parse results — NOT the engines themselves (those run in their
+# own containers with official images).
+httpx
+requests
+pydantic
+rich

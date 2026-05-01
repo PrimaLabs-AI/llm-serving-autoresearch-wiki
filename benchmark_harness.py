@@ -177,9 +177,22 @@ def wait_for_server(health_url: str, timeout: int = 300):
     raise TimeoutError(f"Server did not become healthy within {timeout}s at {health_url}")
 
 
+def get_engine_url(engine: str) -> str:
+    """Get engine base URL from environment or default to localhost."""
+    env_map = {
+        "vllm": ("VLLM_URL", "http://localhost:8000"),
+        "sglang": ("SGLANG_URL", "http://localhost:30000"),
+        "tensorrt-llm": ("TRT_URL", "http://localhost:8001"),
+    }
+    env_var, default = env_map.get(engine, (None, "http://localhost:8000"))
+    return os.environ.get(env_var, default) if env_var else default
+
+
 def run_vllm_benchmark(model: str, workload: str, params: dict, concurrency: int,
-                       base_url: str = "http://localhost:8000") -> dict:
+                       base_url: str | None = None) -> dict:
     """Run vLLM's benchmark_serving.py against the live server."""
+    if base_url is None:
+        base_url = get_engine_url("vllm")
     cmd = [
         "python", "-m", "vllm.benchmark.benchmark_serving",
         "--backend", "vllm",
@@ -209,8 +222,10 @@ def run_vllm_benchmark(model: str, workload: str, params: dict, concurrency: int
 
 
 def run_sglang_benchmark(model: str, workload: str, params: dict, concurrency: int,
-                         base_url: str = "http://localhost:30000") -> dict:
+                         base_url: str | None = None) -> dict:
     """Run SGLang's bench_serving against the live server."""
+    if base_url is None:
+        base_url = get_engine_url("sglang")
     cmd = [
         "python", "-m", "sglang.bench_serving",
         "--backend", "sglang",

@@ -1,0 +1,157 @@
+# LLM Serving Autoresearch Wiki — Docker Compose
+#
+# Each serving engine runs in its own container using official images.
+# The benchmark orchestrator runs benchmarks against them and writes results.
+#
+# Usage:
+#   # Start vLLM only
+#   docker compose up vllm
+#
+#   # Start SGLang only
+#   docker compose up sglang
+#
+#   # Start all engines
+#   docker compose up vllm sglang trt-llm
+#
+#   # Run benchmark against a running engine
+#   docker compose run --rm benchmark \
+#     --engine vllm \
+#     --model meta-llama/Meta-Llama-3-8B-Instruct \
+#     --workload multi-turn-agentic \
+#     --skip-server \
+#     --output-dir raw/benchmarks/2026-04-29-test
+#
+#   # Start an engine + run benchmark in one shot
+#   docker compose up vllm && docker compose run --rm benchmark \
+#     --engine vllm --model meta-llama/Meta-Llama-3-8B-Instruct \
+#     --workload multi-turn-agentic --skip-server \
+#     --output-dir raw/benchmarks/$(date +%Y-%m-%d)-vllm-agentic
+#
+#   # Interactive shell in benchmark container (for Claude Code)
+#   docker compose run --rm -it benchmark-shell
+#
+# Configuration:
+#   Copy .env.example to .env and set your model and GPU count.
+#   Override engine configs via environment variables.
+
+x-common-gpu: &common-gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  # ----------------------------------------------------------------
+  # vLLM — PagedAttention serving engine
+  # ----------------------------------------------------------------
+  vllm:
+    image: vllm/vllm-openai:latest
+    <<: *common-gpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+    environment:
+      - MODEL=${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+    command: >
+      --model ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      --host 0.0.0.0
+      --port 8000
+      --max-num-seqs ${VLLM_MAX_SEQS:-128}
+      --gpu-memory-utilization ${VLLM_GPU_MEM:-0.90}
+      ${VLLM_EXTRA_ARGS:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ----------------------------------------------------------------
+  # SGLang — RadixAttention serving engine
+  # ----------------------------------------------------------------
+  sglang:
+    image: sglang/sglang:latest
+    <<: *common-gpu
+    ports:
+      - "30000:30000"
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+    environment:
+      - MODEL=${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+    command: >
+      --model-path ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      --host 0.0.0.0
+      --port 30000
+      --tp ${SGLANG_TP:-1}
+      --mem-fraction-static ${SGLANG_MEM_FRACTION:-0.90}
+      ${SGLANG_EXTRA_ARGS:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ----------------------------------------------------------------
+  # TensorRT-LLM — NVIDIA's optimized serving engine
+  # Note: requires building an engine first. See:
+  #   https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples
+  # ----------------------------------------------------------------
+  trt-llm:
+    image: nvcr.io/nvidia/tensorrt-llm:latest
+    <<: *common-gpu
+    ports:
+      - "8001:8000"
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+      - trt_engine_cache:/tmp/trt_engines
+    # TensorRT-LLM requires engine compilation before serving.
+    # Override this command with your built engine path.
+    command: >
+      python -m tensorrt_llm.commands.run_server
+      --model ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      --host 0.0.0.0
+      --port 8000
+      ${TRT_EXTRA_ARGS:-}
+    profiles:
+      - trt-llm
+
+  # ----------------------------------------------------------------
+  # Benchmark orchestrator
+  # Runs benchmark_harness.py against engine containers.
+  # ----------------------------------------------------------------
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.benchmark
+    depends_on: {}
+    volumes:
+      - ../raw/benchmarks:/workspace/raw/benchmarks
+      - ../raw/profiles:/workspace/raw/profiles
+      - ../wiki:/workspace/wiki
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - SGLANG_URL=http://sglang:30000
+      - TRT_URL=http://trt-llm:8000
+
+  # ----------------------------------------------------------------
+  # Interactive shell — for Claude Code sessions
+  # Usage: docker compose run --rm -it benchmark-shell
+  # ----------------------------------------------------------------
+  benchmark-shell:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.benchmark
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash"]
+
+volumes:
+  trt_engine_cache:
