@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-01] ingest-codebase | vllm
+
+**Op**: ingest-codebase
+**Pages created**: —
+**Pages updated**: wiki/engines/vllm.md, wiki/index.md
+**Key result**: vLLM ingested (knowledge-based, no local source); supported_hardware = [h100, h200, b200, mi300x]
+**Notes**: First non-stub engine page. Frontmatter `supported_hardware` field unblocks slice 6 scheduler.
+
 ## [2026-04-29] formulate | Seed 5 serving optimization hypotheses
 
 **Op**: formulate

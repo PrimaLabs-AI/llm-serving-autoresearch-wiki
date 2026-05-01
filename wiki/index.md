@@ -4,7 +4,7 @@
 *Methodology: autoresearch extended for serving (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
 ## Engines (3)
-- [vLLM](engines/vllm.md) — PagedAttention-based serving engine; stub, awaiting ingestion
+- [vLLM](engines/vllm.md) — PagedAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [SGLang](engines/sglang.md) — RadixAttention serving engine with automatic prefix caching; stub, awaiting ingestion
 - [TensorRT-LLM](engines/tensorrt-llm.md) — NVIDIA's TensorRT-optimized serving engine; stub, awaiting ingestion
 
