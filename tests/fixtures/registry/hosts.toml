@@ -1,0 +1,23 @@
+[hosts.h100-1]
+ip        = "203.0.113.42"
+user      = "ubuntu"
+ssh_key   = "~/.ssh/lambda_key"
+vendor    = "nvidia"
+hardware  = "h100"
+gpu_count = 8
+
+[hosts.b200-1]
+ip        = "203.0.113.99"
+user      = "ubuntu"
+ssh_key   = "~/.ssh/runpod_key"
+vendor    = "nvidia"
+hardware  = "b200"
+gpu_count = 8
+
+[hosts.mi300x-1]
+ip        = "203.0.113.11"
+user      = "ubuntu"
+ssh_key   = "~/.ssh/tw_key"
+vendor    = "amd"
+hardware  = "mi300x"
+gpu_count = 8

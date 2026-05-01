@@ -1,0 +1,8 @@
+[hosts.h100-1]
+setup_state = "ready"
+
+[hosts.b200-1]
+setup_state = "pending"
+
+[hosts.mi300x-1]
+setup_state = "ready"
