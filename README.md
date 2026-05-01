@@ -177,52 +177,186 @@ raw/                   immutable inputs — never modified.
 
 ---
 
-## Get started
+## Quick Start — On a GPU Instance
 
-Clone:
+### 1. Provision
+
+Rent a GPU instance (Neo Cloud, Lambda, RunPod, etc.) with:
+- **OS**: Ubuntu 22.04 + CUDA 12.x
+- **GPU**: 1x A100/H100 (24GB+ VRAM) for 8B models, 2–4x for 70B
+- **Disk**: 100GB+ (model weights are large)
+
+### 2. Bootstrap
 
 ```bash
 git clone https://github.com/PrimaLabs-AI/llm-serving-autoresearch-wiki
 cd llm-serving-autoresearch-wiki
+./setup.sh --docker
 ```
 
-Start an LLM agent session (Claude Code, Gemini CLI, etc.) in this directory. The agent reads [`SCHEMA.md`](SCHEMA.md) and [`wiki/index.md`](wiki/index.md) on first turn and knows how to operate the wiki.
+This installs Docker, NVIDIA Container Toolkit, pulls engine images, and sets up the benchmark environment.
 
-To run the optimization loop:
-
-1. Pick a model and a serving engine (vLLM, SGLang, or TensorRT-LLM).
-2. Define or choose a workload profile from `wiki/workloads/`.
-3. Create a model page under `wiki/models/<slug>.md` with baseline serving metrics.
-4. Run the top-ranked hypothesis: *"Run hypothesis #1 from the ranked list."*
-5. Review the experiment page the agent writes, approve or reject the verdict.
-6. Iterate.
-
-To run a benchmark manually:
+### 3. Configure
 
 ```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+# Model to benchmark
+MODEL=meta-llama/Meta-Llama-3-8B-Instruct
+
+# HuggingFace token — required for gated models (Llama, Mistral, Qwen)
+# Get yours at: https://huggingface.co/settings/tokens
+# Then accept the model license on its HuggingFace page
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 4. Run
+
+**Option A — Autonomous loop** (zero human input):
+```bash
+./run_loop.sh --model meta-llama/Meta-Llama-3-8B-Instruct --rounds 5
+```
+Claude picks hypotheses, runs benchmarks, ingests results, writes experiment pages, proposes next experiments — all automatically.
+
+**Option B — Manual benchmark sweep**:
+```bash
+./run_eval.sh --model meta-llama/Meta-Llama-3-8B-Instruct
+```
+Sweeps all engines × all workloads × all concurrency levels. Results in `raw/benchmarks/<date>-summary.md`.
+
+**Option C — Interactive** (Claude Code session):
+```bash
+# Start an engine
+docker compose up -d vllm
+
+# Wait for healthy
+docker compose logs -f vllm   # Ctrl+C when ready
+
+# Start Claude
+claude
+# "Run hypothesis #1 — prefix caching for multi-turn agentic workloads."
+```
+
+### 5. Validate first (no token needed)
+
+Test the pipeline with a tiny ungated model before spending GPU hours:
+```bash
+./run_loop.sh --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 --rounds 2
+```
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  GPU Instance                                                │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │  vLLM        │  │  SGLang      │  │  TRT-LLM     │       │
+│  │  :8000       │  │  :30000      │  │  :8001       │       │
+│  │  (Docker)    │  │  (Docker)    │  │  (Docker)    │       │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘       │
+│         │                 │                 │               │
+│         └─────────────────┼─────────────────┘               │
+│                           │                                 │
+│              ┌────────────┴────────────┐                    │
+│              │  Autoresearch Loop      │                    │
+│              │  (run_loop.sh + Claude) │                    │
+│              │  - reads wiki           │                    │
+│              │  - picks hypotheses     │                    │
+│              │  - runs benchmarks      │                    │
+│              │  - writes results       │                    │
+│              │  - proposes next round  │                    │
+│              └─────────────────────────┘                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Each engine runs in its own Docker container (official images) to avoid dependency conflicts. The autoresearch loop orchestrates them via Docker Compose.
+
+---
+
+## Three Modes of Operation
+
+### Mode 1: Autonomous Loop (`run_loop.sh`)
+
+Fully self-driving. No human intervention after starting it.
+
+```bash
+./run_loop.sh --model <model> --rounds 5
+```
+
+Each round:
+1. Claude reads the wiki state (hypotheses, prior experiments)
+2. Picks the top-ranked open hypothesis
+3. Starts the appropriate engine container with a config change
+4. Runs benchmarks across concurrency levels
+5. Ingests results — writes experiment page, updates hypothesis status
+6. Proposes new hypotheses for the next round
+7. Repeats
+
+Output: updated wiki pages + `raw/benchmarks/<date>-loop-log.md`
+
+```bash
+# Options
+./run_loop.sh --model meta-llama/Meta-Llama-3-8B-Instruct --rounds 10
+./run_loop.sh --model meta-llama/Meta-Llama-3-8B-Instruct --rounds infinity  # run until done
+```
+
+### Mode 2: Benchmark Sweep (`run_eval.sh`)
+
+Run a predefined sweep across engines and workloads.
+
+```bash
+./run_eval.sh --model meta-llama/Meta-Llama-3-8B-Instruct                  # everything
+./run_eval.sh --engines vllm,sglang --workloads multi-turn-agentic         # targeted
+./run_eval.sh --model meta-llama/Meta-Llama-3-8B-Instruct --dry-run        # see what it would do
+./run_eval.sh --setup                                                       # bootstrap only
+```
+
+Output: `raw/benchmarks/<date>-summary.md` with cross-engine comparison tables.
+
+### Mode 3: Manual (`claude` or `docker compose`)
+
+Full control. You decide what to test.
+
+```bash
+# Start an engine with custom config
+docker compose up -d vllm
+
+# Run a specific benchmark
 python benchmark_harness.py \
   --engine vllm \
   --model meta-llama/Meta-Llama-3-8B-Instruct \
   --workload multi-turn-agentic \
-  --config '{"enable_prefix_caching": true}' \
-  --output-dir raw/benchmarks/<date>-<slug> \
-  --skip-server
+  --config '{"enable_prefix_caching": true, "max_num_seqs": 128}' \
+  --skip-server \
+  --output-dir raw/benchmarks/$(date +%Y-%m-%d)-prefix-cache-test
+
+# Start Claude to analyze
+claude
 ```
-
-To add a new engine to the wiki:
-
-1. Create `wiki/engines/<slug>.md` using the engine page template from [`SCHEMA.md`](SCHEMA.md).
-2. Populate the **serving-relevant surfaces** table with the engine's tunable knobs.
-3. Add hypothesis candidates targeting the engine's optimization surface.
-
-To add a new workload:
-
-1. Create `wiki/workloads/<slug>.md` using the workload page template from [`SCHEMA.md`](SCHEMA.md).
-2. Define request patterns, concurrency characteristics, and a representative benchmark config.
 
 ---
 
-## Current seed hypotheses
+## Recommended Models
+
+| Model | Size | GPU needed | HF token | Use for |
+|---|---|---|---|---|
+| TinyLlama/TinyLlama-1.1B-Chat-v1.0 | 1.1B | Any GPU | No | Pipeline validation |
+| meta-llama/Meta-Llama-3-8B-Instruct | 8B | 1x A100/H100 | Yes | Real benchmarks |
+| Qwen/Qwen2.5-7B-Instruct | 7B | 1x A100/H100 | Yes | Alternative arch |
+| meta-llama/Meta-Llama-3.1-70B-Instruct | 70B | 2–4x A100/H100 | Yes | Multi-GPU optimization |
+
+Start with TinyLlama to validate, then Llama-3 8B for real work.
+
+---
+
+## Current Seed Hypotheses
 
 | # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
 |---|---|---|---|---|---|---|
