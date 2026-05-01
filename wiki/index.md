@@ -6,7 +6,7 @@
 ## Engines (3)
 - [vLLM](engines/vllm.md) — PagedAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [SGLang](engines/sglang.md) — RadixAttention serving; commit `` — supported on H100/H200/B200/MI300X
-- [TensorRT-LLM](engines/tensorrt-llm.md) — NVIDIA's TensorRT-optimized serving engine; stub, awaiting ingestion
+- [TensorRT-LLM](engines/tensorrt-llm.md) — TensorRT-compiled serving; commit `` — **NVIDIA only** (H100/H200/B200)
 
 ## Workloads (5)
 - [Multi-Turn Agentic](workloads/multi-turn-agentic.md) — agent loops with tool calls, growing context, high prefix reuse

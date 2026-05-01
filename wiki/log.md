@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-01] ingest-codebase | tensorrt-llm
+
+**Op**: ingest-codebase
+**Pages created**: —
+**Pages updated**: wiki/engines/tensorrt-llm.md, wiki/index.md
+**Key result**: TensorRT-LLM ingested (knowledge-based); supported_hardware = [h100, h200, b200]; MI300X excluded.
+**Notes**: NVIDIA-only constraint captured in frontmatter; scheduler will reject MI300X dispatch for TRT-LLM hypotheses.
+
 ## [2026-05-01] ingest-codebase | sglang
 
 **Op**: ingest-codebase
