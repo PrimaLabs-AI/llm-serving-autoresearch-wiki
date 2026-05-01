@@ -72,7 +72,13 @@ if [ -n "${MODEL:-}" ]; then
     if [ -n "${HF_TOKEN:-}" ]; then
         export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
     fi
-    python3 -c "from huggingface_hub import snapshot_download; snapshot_download('$MODEL')" || fail "hf_warm_${MODEL//\//_}"
+    # setup-cuda.sh installed huggingface_hub into the venv at $REPO_DIR/venv,
+    # not into the system Python. Use the venv's interpreter explicitly.
+    venv_py="$REPO_DIR/venv/bin/python3"
+    if [ ! -x "$venv_py" ]; then
+        fail "venv_python_missing"
+    fi
+    "$venv_py" -c "from huggingface_hub import snapshot_download; snapshot_download('$MODEL')" || fail "hf_warm_${MODEL//\//_}"
 fi
 
 echo "DONE"
