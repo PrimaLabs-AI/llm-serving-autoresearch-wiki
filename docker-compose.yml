@@ -56,6 +56,8 @@ services:
       - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
     environment:
       - MODEL=${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - VLLM_API_KEY=${HF_TOKEN:-}
     command: >
       --model ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
       --host 0.0.0.0
@@ -82,6 +84,7 @@ services:
       - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
     environment:
       - MODEL=${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      - HF_TOKEN=${HF_TOKEN:-}
     command: >
       --model-path ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
       --host 0.0.0.0
@@ -109,6 +112,9 @@ services:
     volumes:
       - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
       - trt_engine_cache:/tmp/trt_engines
+    environment:
+      - MODEL=${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      - HF_TOKEN=${HF_TOKEN:-}
     # TensorRT-LLM requires engine compilation before serving.
     # Override this command with your built engine path.
     command: >
