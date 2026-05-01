@@ -194,13 +194,13 @@ def run_vllm_benchmark(model: str, workload: str, params: dict, concurrency: int
     if base_url is None:
         base_url = get_engine_url("vllm")
     cmd = [
-        "python", "-m", "vllm.benchmark.benchmark_serving",
+        "python", "-m", "vllm.benchmarks.serve",
         "--backend", "vllm",
         "--base-url", base_url,
         "--model", model,
         "--num-prompts", str(max(100, concurrency * 4)),
         "--request-rate", "inf",
-        "--concurrency", str(concurrency),
+        "--max-concurrency", str(concurrency),
     ]
 
     # Add synthetic workload parameters
