@@ -61,10 +61,11 @@ set -a; source .env; set +a
 step "run setup.sh (skip claude/repo/tensorrt)"
 # --skip-repo:    we already rsync'd the working tree
 # --skip-claude:  Claude lives on the Mac, not the box, in mac-driver mode
-# --skip-tensorrt: TensorRT-LLM install is heavy and not needed for round 1
-#                  (vLLM is the engine for the top-ranked hypothesis).
-#                  Re-enable later via SETUP_FLAGS env override.
-./setup.sh ${SETUP_FLAGS:-"--skip-claude --skip-repo --skip-tensorrt"} || fail "setup"
+# --skip-tensorrt: TensorRT-LLM install is heavy and not needed for round 1.
+# To override (e.g. enable TRT-LLM later), set SETUP_FLAGS in the bootstrap env.
+SETUP_FLAGS=${SETUP_FLAGS:---skip-claude --skip-repo --skip-tensorrt}
+# Intentionally unquoted so SETUP_FLAGS word-splits into separate arguments.
+./setup.sh $SETUP_FLAGS || fail "setup"
 
 step "warm HF cache for ${MODEL:-<unset>}"
 if [ -n "${MODEL:-}" ]; then
