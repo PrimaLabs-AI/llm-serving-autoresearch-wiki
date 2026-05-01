@@ -200,7 +200,7 @@ TensorRT-LLM ships pre-built recipes for major model families. Each requires mod
 
 All model families are NVIDIA-only — no AMD/ROCm path exists in TensorRT-LLM.
 
-## Known Strengths and Weaknesses
+## Known Strengths / Weaknesses
 
 ### Strengths
 
