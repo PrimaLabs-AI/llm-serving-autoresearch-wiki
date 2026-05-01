@@ -25,6 +25,7 @@ tpu_performance_autoresearch_wiki/     ← project root (agent CWD)
     concepts/                          ← techniques, abstractions, flags, kernels
     models/                            ← each model under optimization (inputs + SOTA target)
     engines/                           ← one page per serving engine (vllm, sglang, tensorrt-llm)
+    hardware/                          ← one page per GPU/accelerator tier (h100, b200, mi300x)
     workloads/                         ← agentic workload profiles (multi-turn, tool-use, etc.)
     hypotheses/                        ← ranked candidate optimizations, not yet run
     experiments/                       ← runs: config, benchmark link, metrics, verdict
@@ -77,7 +78,7 @@ Every wiki page starts with YAML frontmatter. Minimum fields (extend per page ty
 ```yaml
 ---
 title: "<page title>"
-type: source | codebase | concept | model | engine | workload | hypothesis | experiment | observation | analysis
+type: source | codebase | concept | model | engine | hardware | workload | hypothesis | experiment | observation | analysis
 tags: [...]
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -125,6 +126,10 @@ An optimization technique, hardware feature, compiler pass, flag, kernel, or abs
 
 ### model  (`wiki/models/<slug>.md`)
 A model under optimization. This is a **live page** — it tracks the current best configuration and open questions.
+- Frontmatter adds:
+  ```yaml
+  target_hardware: [<slug>, ...]
+  ```
 - H2: Target metrics, Hardware, How to run (verbatim command), Baseline, Current best, Known bottlenecks, Open hypotheses, Retired hypotheses, History.
 - `Baseline` and `Current best` are tables with both training and serving columns:
   - **Training**: step time, MFU, tokens/sec, peak HBM.
@@ -142,6 +147,16 @@ An LLM serving engine under study (e.g., vllm, sglang, tensorrt-llm).
   - Quantization: quantization method, dtype
   - CUDA graphs: enforce_eager, num_cudagraph_capture_sizes
 - Record the exact commit SHA ingested in frontmatter: `commit: <sha>`.
+- Frontmatter adds:
+  ```yaml
+  supported_hardware: [<slug>, ...]
+  ```
+
+### hardware  (`wiki/hardware/<slug>.md`)
+A GPU/accelerator tier under optimization (e.g., h100, b200, mi300x).
+- H2: Specs (table), Memory hierarchy, Compute features, Engine support (table), Known performance ceilings, Optimization gotchas, Connections, Sources.
+- Frontmatter must carry `vendor:` (`nvidia`/`amd`/`tpu`), `arch:` (`hopper`/`blackwell`/`cdna3`/etc.).
+- Slugs (`h100`, `b200`, `mi300x`) are referenced by `hosts.toml`, by `hypothesis.hardware`, by `experiment.hardware`/`host`, by `model.target_hardware`, and by `engine.supported_hardware`.
 
 ### workload  (`wiki/workloads/<slug>.md`)
 An agentic AI workload profile defining request patterns for benchmarking.
@@ -174,6 +189,7 @@ expected_gain: "<e.g. 5-15% throughput at concurrency=64>"
 confidence: low | medium | high
 effort: S | M | L
 origin: <source-slug or observation-slug or human>
+hardware: any | nvidia | amd | <slug>
 ```
 - H2: Statement (one sentence, falsifiable), Rationale (why you believe this; cite sources/observations), Proposed experiment (what to change, what to measure, expected delta), Risks (semantic changes, regressions), Dependencies.
 - The **ranked hypothesis list** for a model lives in that model's page, derived from these — keep them in sync.
@@ -187,6 +203,8 @@ engine: <engine-slug>           # optional — set for serving experiments
 workload: <workload-slug>       # optional — set for serving experiments
 commit: <model-repo-sha>
 verdict: supported | refuted | inconclusive | invalid
+hardware: <slug>
+host: <host-name-from-hosts-toml>
 ```
 - H2: Hypothesis under test, Setup (hardware, env, exact command — copy from model page and diff the changed flags), Baseline comparison, Results (table: metric × baseline × this run × delta × noise band), **Profile / Benchmark** (see below), Observations (links to observation pages produced), Verdict + reasoning, Next hypotheses (links).
 
@@ -309,6 +327,7 @@ Check and report:
 - Broken markdown links (target `.md` does not exist).
 - Concept/entity names mentioned in prose but not linked to an existing page.
 - Stale codebase pages whose `commit:` is far behind the current checkout.
+- Hypotheses missing `hardware:` frontmatter; experiments missing `hardware:` or `host:`; engines missing `supported_hardware:`. (Auto-fix not safe — flag for human.)
 
 Fix mechanical issues automatically; flag judgment calls for the human.
 
@@ -410,3 +429,4 @@ Grepping the log: `grep "^## \[" wiki/log.md | head -20` → last 20 events.
 12. **Read `index.md` first** on any query — do not guess which pages exist.
 13. **One entity/concept/model per page.** Split when a page exceeds ~500 lines.
 14. **No cross-wiki links.** This wiki does not reference `tpu_wiki` or any sibling.
+15. **Hardware compatibility is data, not prose.** Every hypothesis carries `hardware:`; every experiment carries `hardware:` and `host:`; every engine carries `supported_hardware:`. The orchestration loop's scheduler intersects these to dispatch a round to a compatible host. Pages missing these fields will fail `LINT`.
