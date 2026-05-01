@@ -189,25 +189,29 @@ def get_engine_url(engine: str) -> str:
 
 
 def run_vllm_benchmark(model: str, workload: str, params: dict, concurrency: int,
-                       base_url: str | None = None) -> dict:
-    """Run vLLM's benchmark_serving.py against the live server."""
+                       base_url: str | None = None,
+                       result_dir: str | None = None) -> dict:
+    """Run `vllm bench serve` against a live vLLM server."""
     if base_url is None:
         base_url = get_engine_url("vllm")
     cmd = [
-        "python", "-m", "vllm.benchmarks.serve",
+        "vllm", "bench", "serve",
         "--backend", "vllm",
         "--base-url", base_url,
         "--model", model,
         "--num-prompts", str(max(100, concurrency * 4)),
         "--request-rate", "inf",
         "--max-concurrency", str(concurrency),
+        "--dataset-name", "random",
+        "--save-result",
+        "--result-dir", result_dir or ".",
     ]
 
-    # Add synthetic workload parameters
+    # Add synthetic workload parameters (random-* flags for the random dataset)
     if "input_length" in params:
-        cmd.extend(["--input-len", str(params["input_length"])])
+        cmd.extend(["--random-input-len", str(params["input_length"])])
     if "output_length" in params:
-        cmd.extend(["--output-len", str(params["output_length"])])
+        cmd.extend(["--random-output-len", str(params["output_length"])])
 
     print(f"  Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -267,44 +271,44 @@ BENCHMARK_RUNNERS = {
 def parse_metrics(raw_output: str, engine: str) -> dict:
     """Extract key metrics from benchmark tool stdout.
 
-    This is a best-effort parser — engine benchmark tools print tables
-    to stdout in slightly different formats. Returns whatever it can extract.
+    Tuned to vLLM 0.20+ "vllm bench serve" output format. Best-effort —
+    keys are added only when the corresponding line is found.
     """
-    metrics = {}
+    import re
+
+    metrics: dict = {}
+
+    # (regex, field-name) — first capture group must be the float value.
+    patterns = [
+        (r"Request throughput \(req/s\):\s*([\d.]+)",          "throughput_req_s"),
+        (r"Output token throughput \(tok/s\):\s*([\d.]+)",     "output_tokens_s"),
+        (r"Total token throughput \(tok/s\):\s*([\d.]+)",      "total_tokens_s"),
+        (r"Mean TTFT \(ms\):\s*([\d.]+)",                       "ttft_mean_ms"),
+        (r"Median TTFT \(ms\):\s*([\d.]+)",                     "ttft_median_ms"),
+        (r"P99 TTFT \(ms\):\s*([\d.]+)",                        "ttft_p99_ms"),
+        (r"Mean TPOT \(ms\):\s*([\d.]+)",                       "tpot_mean_ms"),
+        (r"Median TPOT \(ms\):\s*([\d.]+)",                     "tpot_median_ms"),
+        (r"P99 TPOT \(ms\):\s*([\d.]+)",                        "tpot_p99_ms"),
+        (r"Mean ITL \(ms\):\s*([\d.]+)",                        "itl_mean_ms"),
+        (r"P99 ITL \(ms\):\s*([\d.]+)",                         "itl_p99_ms"),
+        (r"Successful requests:\s*([\d.]+)",                    "successful_requests"),
+        (r"Failed requests:\s*([\d.]+)",                        "failed_requests"),
+        (r"Benchmark duration \(s\):\s*([\d.]+)",               "duration_s"),
+        # Legacy SGLang/vLLM format fallbacks
+        (r"Throughput.*requests/s.*?:\s*([\d.]+)",              "throughput_req_s"),
+        (r"Throughput.*tokens/s.*?:\s*([\d.]+)",                "output_tokens_s"),
+    ]
 
     for line in raw_output.splitlines():
-        line = line.strip()
-        # Common patterns across engines
-        if "Throughput" in line and "requests/s" in line.lower():
-            try:
-                metrics["throughput_req_s"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "Throughput" in line and "tokens/s" in line.lower():
-            try:
-                metrics["throughput_tokens_s"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "TTFT" in line and "mean" in line.lower():
-            try:
-                metrics["ttft_mean_ms"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "TTFT" in line and "p99" in line.lower():
-            try:
-                metrics["ttft_p99_ms"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "TPOT" in line or "Time per output token" in line:
-            try:
-                metrics["tpot_mean_ms"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "E2E" in line or "End-to-end" in line or "Total latency" in line:
-            try:
-                metrics["e2e_mean_ms"] = float(line.split(":")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
+        for pat, key in patterns:
+            if key in metrics:
+                continue
+            m = re.search(pat, line, re.IGNORECASE)
+            if m:
+                try:
+                    metrics[key] = float(m.group(1))
+                except (ValueError, IndexError):
+                    pass
 
     return metrics
 
@@ -380,7 +384,12 @@ def main():
 
     for conc in concurrency_levels:
         print(f"\n--- Concurrency level: {conc} ---")
-        result = runner(args.model, args.workload, params, conc)
+        try:
+            result = runner(args.model, args.workload, params, conc,
+                            result_dir=str(output_dir))
+        except TypeError:
+            # Older runners (sglang) don't accept result_dir yet
+            result = runner(args.model, args.workload, params, conc)
         all_results.append(result)
 
         metrics = parse_metrics(result["stdout"], args.engine)
