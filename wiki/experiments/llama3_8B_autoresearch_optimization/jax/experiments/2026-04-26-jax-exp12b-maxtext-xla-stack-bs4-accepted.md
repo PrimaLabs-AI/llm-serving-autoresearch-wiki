@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp12b-maxtext-xla-stack-bs4 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 + MaxText stack at bs=4 — 7,402/chip 41.5 % MFU. Density sweep continuation.

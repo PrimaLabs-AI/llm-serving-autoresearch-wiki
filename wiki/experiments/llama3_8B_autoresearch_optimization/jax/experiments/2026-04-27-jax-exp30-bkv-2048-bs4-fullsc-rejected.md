@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp30-bkv-2048-bs4-fullsc (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 bkv=2048 (vs bkv=1024) on top of full SC offload — 7,752/chip 43.5 % MFU; **-0.2 % within noise**. The +0.7 % bkv=2048 lift from exp 18 does NOT compound on full SC offload.

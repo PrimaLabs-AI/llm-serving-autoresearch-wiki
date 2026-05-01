@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp11-scan-remat-everything-saveable (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 everything_saveable remat policy — OOM at compile (saves all activations).

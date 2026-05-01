@@ -9,6 +9,8 @@ updated: 2026-04-26
 commit: "v6e8-llama3-8b-torchax-20260426-exp62b-chunkedxla-ce (image hf-v28)"
 branched_from: v6e8-llama3-8b-torchax-20260426-exp55b-fp32-master-tokamax
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **Program-target advanced again.** Switching the tokamax cross-entropy

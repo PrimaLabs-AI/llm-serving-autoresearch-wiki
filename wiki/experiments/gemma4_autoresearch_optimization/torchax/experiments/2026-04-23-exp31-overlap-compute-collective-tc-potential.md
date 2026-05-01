@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp31-overlap-compute-collective-tc"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Enabled only `--xla_tpu_overlap_compute_collective_tc=true` (the correctly-named flag identified in exp 1's follow-up — exp 1 tried `_comms` and got "Unknown"). **Result: 33,330 TPS, 368.67 ms/step steady-state, −0.13 % vs exp 25.** Within noise. Flat.

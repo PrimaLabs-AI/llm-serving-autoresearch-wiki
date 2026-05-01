@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp5-splash-seq2k (harness: tune_splash.py)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp5-splash-seq2k
 verdict: potential
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 First **kernel-only** autotune in this program. Sweeps splash-attention

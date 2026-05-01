@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: 6e0f354
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commit `6e0f354` + merge commit `e71cdfc`.*

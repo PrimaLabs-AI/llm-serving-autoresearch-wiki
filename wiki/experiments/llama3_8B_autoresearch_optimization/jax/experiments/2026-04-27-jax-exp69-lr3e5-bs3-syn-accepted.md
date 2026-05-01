@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp69-lr3e5-bs3-syn (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Same as exp 68 but at MaxText's bs=3 shape — loss 11.93 → 11.77, throughput 7,576/chip 42.5 % MFU. Same lesson at MaxText shape.

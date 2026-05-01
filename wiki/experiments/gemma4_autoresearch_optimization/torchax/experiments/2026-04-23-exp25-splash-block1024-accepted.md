@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: bc26a7b
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commits `bc26a7b`, `ebb00ec`. This is the **session-best** configuration — everything on trunk after this merge reproduces this number.*

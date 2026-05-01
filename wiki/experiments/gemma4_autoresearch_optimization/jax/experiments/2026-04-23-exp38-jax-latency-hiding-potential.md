@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: pending
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Same JAX stack as exp 36 (splash + batch=3 + bf16 CE by construction), with `--xla_tpu_enable_latency_hiding_scheduler=true` added via `LIBTPU_INIT_ARGS`. **Result: 34,634 TPS vs exp 36's 34,614 — +0.06 %, flat.** No-op, mirroring the torchax exp 30 result on the same flag.

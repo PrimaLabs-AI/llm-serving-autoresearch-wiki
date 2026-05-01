@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp61-val100opt-realdata-exhausted (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 100-step run on wikitext-2 real data — terminated at step 9 ("data exhausted"). Triggered switch to synthetic data for 100-step validation.

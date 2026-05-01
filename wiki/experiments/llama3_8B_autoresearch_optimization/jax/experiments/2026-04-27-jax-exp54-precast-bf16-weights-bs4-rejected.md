@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp54-precast-bf16-weights-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Pre-cast bf16 weights once per train_step (vs cast inside model_fn) — 7,615/chip 42.7 % MFU, **-1.1 %**.

@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp31-bs3-fullsc-maxtext-shape (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 bs=3 with full SC offload (matches MaxText shape) — 7,559/chip 42.4 % MFU; **+6.9 % vs MaxText 7,069/chip** at MaxText's exact shape.

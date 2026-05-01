@@ -9,6 +9,8 @@ updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp13-maxtext-xla-bs5 (image jax-v4)"
 branched_from: v6e8-llama3-8b-jax-20260426-exp1e-baseline
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **JAX Llama 3 8B trainer at 7,415 tok/s/chip — exceeds MaxText

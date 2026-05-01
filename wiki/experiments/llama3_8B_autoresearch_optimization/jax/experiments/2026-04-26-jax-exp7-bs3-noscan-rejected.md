@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp7-bs3-noscan (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 no-scan variant — refuted, slow compile (>180 s) and OOM at bs=3 due to 32-layer unroll memory peak.

@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp51-enable-collective-matmul (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Set `xla_jf_spmd_threshold_for_windowed_einsum_mib=4` (ENABLE collective matmul; we had 1000000 to disable) — 6,568/chip 36.8 % MFU, **-14.7 %**. HARD REFUTE.

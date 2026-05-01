@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: ca80c11
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commit `ca80c11` message.*

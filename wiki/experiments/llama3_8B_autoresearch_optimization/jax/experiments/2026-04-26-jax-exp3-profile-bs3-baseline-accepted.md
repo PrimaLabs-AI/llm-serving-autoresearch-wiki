@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp3-profile-bs3-baseline (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 First xprof capture of the JAX baseline at bs=3 seq=8192. Profile saved to GCS; identifies async-AR + matmul as primary cost categories.

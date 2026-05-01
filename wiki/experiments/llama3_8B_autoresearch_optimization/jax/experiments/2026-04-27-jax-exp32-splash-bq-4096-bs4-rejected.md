@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp32-splash-bq-4096-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 SPLASH_BQ=4096 (vs 2048) — 6,122/chip 34.3 % MFU, **-21.2 %**. Hard refute: VMEM spill from bigger query blocks.

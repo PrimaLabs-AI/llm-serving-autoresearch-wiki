@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp10-noop-default-stack (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Re-run baseline with default stack to bound run-to-run noise: 6,520/chip — within ±1 % of exp 1e.

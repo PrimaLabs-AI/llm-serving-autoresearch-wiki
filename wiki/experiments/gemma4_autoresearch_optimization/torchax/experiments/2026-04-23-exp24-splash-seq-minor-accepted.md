@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: 8cec59e
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commits `8cec59e`, `0fabe79`.*

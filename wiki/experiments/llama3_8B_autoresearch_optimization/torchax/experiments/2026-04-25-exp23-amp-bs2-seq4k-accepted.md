@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp23-amp-bs2-seq4k (image hf-v7)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp20-amp-fp32-master
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Same per-chip B·L = 8,192 as [exp 20](2026-04-25-exp20-amp-fp32-master-seq8k-accepted.md)

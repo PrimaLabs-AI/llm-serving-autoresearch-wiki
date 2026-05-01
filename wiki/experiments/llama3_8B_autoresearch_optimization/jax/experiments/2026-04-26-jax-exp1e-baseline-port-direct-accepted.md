@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp1e-baseline-port-direct (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Direct JAX port of torchax frontier — 6,529/chip 36.6 % MFU at bs=3 seq=8192. Establishes parity with the torchax exp 74b stack.

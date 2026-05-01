@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: pending
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Bumped `--xla_tpu_scoped_vmem_limit_kib` from the default 131,072 KiB (128 MiB) to 524,288 KiB (512 MiB) on the JAX stack at exp 36's config. **Result: −13.8 % TPS (34,614 → 29,832), MFU 23.05 → 19.87 %.** Larger VMEM budget pessimizes — scheduler/cost-model decisions worsen, not better.

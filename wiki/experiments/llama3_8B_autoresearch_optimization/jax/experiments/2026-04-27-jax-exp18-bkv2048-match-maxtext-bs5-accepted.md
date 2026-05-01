@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp18-bkv2048-match-maxtext-bs5 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 Match MaxText splash bkv=2048 (we had bkv=1024 from torchax autotune carry-over) — **7,471/chip 41.9 % MFU (+0.7 %)**. Prior frontier.

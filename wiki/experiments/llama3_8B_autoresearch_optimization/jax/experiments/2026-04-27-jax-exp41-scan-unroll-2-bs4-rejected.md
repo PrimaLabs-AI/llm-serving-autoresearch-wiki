@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp41-scan-unroll-2-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 scan unroll=2 (bigger XLA fusion window) — 7,553/chip 42.4 % MFU, **-2.8 %**. Bigger unroll regresses.

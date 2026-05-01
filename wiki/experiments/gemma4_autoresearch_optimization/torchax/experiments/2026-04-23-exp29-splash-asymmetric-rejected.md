@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp29-splash-asymmetric"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Tried halving `block_kv` (and `block_kv_compute`) to 512 while keeping `block_q` at 1024, under the theory that a smaller KV tile would reduce per-tile VMEM and increase concurrency on the splash scheduler. **Result: −0.37 % TPS vs exp 25 — within noise, but directionally worse.** Larger symmetric block_kv = block_q = 1024 wins.

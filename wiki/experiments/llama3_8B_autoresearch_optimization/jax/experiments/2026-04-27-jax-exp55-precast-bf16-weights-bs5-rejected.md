@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp55-precast-bf16-weights-bs5 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Pre-cast bf16 weights at bs=5 — 7,665/chip 43.0 % MFU, **-0.7 %** (within noise). Same lesson at higher density.

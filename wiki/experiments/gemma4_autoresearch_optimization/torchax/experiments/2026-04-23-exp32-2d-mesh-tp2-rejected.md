@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp32-2d-mesh-tp2"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Wired a 2D `(dp=2, tp=2)` mesh with hybrid tp+dp sharding: MLP / attention projections tp-sharded on their NeMo-Megatron axis AND dp-sharded on the other axis (so opt-state is 4-way = 2×2 per chip, matching 1D fsdp=4). Non-TP params dp-sharded FSDP-style. Goal: shard heads across tp for parallel per-chip attention compute; unlock batch=4 via reduced per-chip memory. **Result: batch=3 still compile-time OOMs (by 1.15 GiB); batch=2 runs but is 12,711 TPS at global batch=4 vs baseline's 30,570 same global batch — 2.4× regression. TP overhead at 2 chips/axis dominates.** Refuted, not merged.

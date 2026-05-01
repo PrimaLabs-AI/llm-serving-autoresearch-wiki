@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp13-scan (image hf-v5)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp9-splash-autotuned-bs4
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 After [exp 11's](2026-04-25-exp11-remat-rejected.md) finding that an

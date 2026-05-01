@@ -8,6 +8,7 @@ status: active
 hardware: "TPU v6e (primary)"
 framework: "torchax (PyTorch-on-JAX); optional native-JAX port"
 model_source: "https://huggingface.co/google/gemma-4-E4B"
+host: legacy-tpu
 ---
 
 # Gemma 4 E4B — TPU Autoresearch Optimization

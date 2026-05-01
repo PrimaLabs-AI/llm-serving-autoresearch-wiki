@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp64-val100ref-realdata-exhausted (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 100-step run with USE_TOKAMAX_SPLASH=0 (jax-experimental splash) — also exhausts data at step 9. Loss matches exp 61/62 to 4 decimal places.

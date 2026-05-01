@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp56-validate-exp28b-rerun-2 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Second re-run of exp 28b config — 7,707/chip 43.2 % MFU. Confirms noise-band measurement.

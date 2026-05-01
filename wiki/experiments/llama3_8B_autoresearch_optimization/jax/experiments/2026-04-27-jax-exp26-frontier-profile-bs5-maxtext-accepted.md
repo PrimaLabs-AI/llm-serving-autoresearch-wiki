@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp26-frontier-profile-bs5-maxtext (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Profile capture of exp 18 frontier — identifies async-all-reduce-scatter at 5.0 % of step still on TC. Triggers exp 27 (add SC RS+AG offload).

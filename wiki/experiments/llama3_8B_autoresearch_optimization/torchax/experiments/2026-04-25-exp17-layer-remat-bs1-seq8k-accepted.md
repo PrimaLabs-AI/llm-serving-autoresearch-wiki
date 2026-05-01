@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp13-scan (image hf-v5)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp13-scan
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 **First successful run at the program-target sequence length** —

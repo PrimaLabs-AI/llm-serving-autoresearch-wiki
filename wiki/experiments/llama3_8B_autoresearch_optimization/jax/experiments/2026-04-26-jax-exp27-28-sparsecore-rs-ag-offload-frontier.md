@@ -9,6 +9,8 @@ updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp28b-sc-rsag-bs4 (image jax-v4)"
 branched_from: jax-exp18 (bkv=2048, SC-AR-only)
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **JAX Llama 3 8B trainer at 7,768 tok/s/chip, 43.6 % reported MFU

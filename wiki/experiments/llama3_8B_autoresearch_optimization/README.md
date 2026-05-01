@@ -8,6 +8,7 @@ status: active
 hardware: "TPU v6e (primary)"
 framework: "torchax (PyTorch-on-JAX); optional native-JAX port"
 model_source: "https://huggingface.co/meta-llama/Meta-Llama-3-8B"
+host: legacy-tpu
 ---
 
 # Llama 3 8B — TPU Autoresearch Optimization

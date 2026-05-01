@@ -10,6 +10,7 @@ expected_gain: "+2-4 % step time (claimed) — invalidated by 2026-04-27 HLO ins
 confidence: medium
 effort: L
 origin: jax-exp28b-profile-2026-04-26
+hardware: any
 ---
 
 Custom Pallas TPU kernel that fuses **`silu(g) * u` (SwiGLU) into the `down_proj` matmul prologue** so the MLP intermediate `silu(g)*u` (4 × 8192 × 14336 bf16 ≈ 939 MiB/layer/chip × 32 layers = 30 GiB/step of HBM traffic) never round-trips through HBM. Targets the 9.2 % loop-fusion line in [exp 28b's profile](../experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md#profile).

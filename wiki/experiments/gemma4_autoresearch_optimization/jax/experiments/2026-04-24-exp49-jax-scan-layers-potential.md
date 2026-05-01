@@ -8,6 +8,8 @@ created: 2026-04-24
 updated: 2026-04-24
 commit: TBD
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Replaced the 42-iteration Python `for layer in self.layers` loop in

@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp28-seq2048-exp25config"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Rerun seq=2048 b=1 at the current-best configuration (exp25: splash + SEQ_MINOR + block=1024 + fused_bwd + bf16 CE). The last direct data point at seq=2048 b=1 was exp 14 (31,960 TPS, on the splash + fused_bwd + bf16 CE stack before SEQ_MINOR and block=1024 landed). Goal: see whether exp25's block/layout improvements extend to long sequences.

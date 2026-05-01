@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD + new pallas_attention.py + register_splash_attention in train.py"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 First Pallas-kernel experiment. Registered a custom attention function in HF's `ALL_ATTENTION_FUNCTIONS` that dispatches through `jax.experimental.pallas.ops.tpu.splash_attention_kernel` via `torchax.interop.call_jax` + `jax.shard_map`. **Modest but real win: +2.7 % TPS vs baseline**, loss trajectory preserved.

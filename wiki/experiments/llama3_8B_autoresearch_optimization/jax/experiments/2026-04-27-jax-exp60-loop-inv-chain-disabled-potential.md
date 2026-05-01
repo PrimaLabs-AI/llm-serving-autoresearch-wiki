@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp60-loop-inv-chain-disabled (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 `xla_should_allow_loop_variant_parameter_in_chain=DISABLED + xla_should_add_loop_invariant_op_in_chain=DISABLED` — 7,646/chip 42.9 % MFU, **-0.7 % within noise**.

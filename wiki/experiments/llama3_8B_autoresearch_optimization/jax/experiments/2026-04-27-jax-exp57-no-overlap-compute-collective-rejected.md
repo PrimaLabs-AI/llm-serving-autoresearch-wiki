@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp57-no-overlap-compute-collective (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Flip `xla_tpu_overlap_compute_collective_tc=false` — 7,613/chip 42.7 % MFU, **-1.1 %**.

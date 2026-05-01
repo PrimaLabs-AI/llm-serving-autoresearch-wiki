@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: 49d43e9
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 First end-to-end run of the native-JAX (Flax NNX) port of Gemma 4 E4B on v6e-4. Loss trajectory matches the torchax reference (3.92 → 2.30 vs torchax 3.93 → 2.04 at the same config); steady-state step time 135.2 ms and **30,285 TPS** at `batch=1 seq=1024 fsdp=4 bf16`, which is **-0.9 % vs the torchax baseline-seq1024 (30,570 TPS)** — effectively identical (within noise).

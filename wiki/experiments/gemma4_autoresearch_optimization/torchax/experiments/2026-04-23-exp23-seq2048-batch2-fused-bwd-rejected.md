@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: 4164f12
 verdict: crash
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commit `4164f12` message.*

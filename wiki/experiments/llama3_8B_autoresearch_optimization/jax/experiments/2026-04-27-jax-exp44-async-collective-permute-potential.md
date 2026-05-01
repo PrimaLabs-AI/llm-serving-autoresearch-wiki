@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp44-async-collective-permute (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 `xla_enable_async_collective_permute=true` — 7,690/chip 43.1 % MFU, **-1.0 % within noise**.

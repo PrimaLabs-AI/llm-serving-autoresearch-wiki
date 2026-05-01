@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp5-bs2-density (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Density check at bs=2 seq=8192. 6,310/chip 35.4 % MFU; baseline shape comparison anchor.

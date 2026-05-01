@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp20-jax-experimental-splash (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Replace tokamax-splash with jax-experimental splash — 7,142/chip 40.0 % MFU; **almost exactly MaxText's 7,138 number**.

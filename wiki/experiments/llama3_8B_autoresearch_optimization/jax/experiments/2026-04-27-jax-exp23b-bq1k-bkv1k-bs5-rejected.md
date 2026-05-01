@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp23b-bq1k-bkv1k-bs5 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Symmetric bq=1024 bkv=1024 splash blocks — 7,398/chip; -1.0 % vs exp 18 (asymmetric bq=2048 bkv=1024 wins).

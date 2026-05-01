@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp27-tokamax-dpa"
 verdict: parked
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Tried to swap our direct `make_splash_mha_single_device` wiring for `tokamax.dot_product_attention(implementation="mosaic")`. Same splash kernel under the hood, but tokamax's mosaic_tpu path sets `use_base2_exp=True` in the softmax (TPU-native exp2 instead of natural exp). **Blocked: tokamax's mosaic_tpu kernel does not support `mask.k_start`, i.e. sliding-window attention.** Gemma 4 has 21 sliding-window layers out of 42, all of which fall back to XLA — dominating step time. Parked.

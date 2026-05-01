@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp35-save-qkv-proj-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 MaxText `save_qkv_proj` named-remat policy — **OOM at compile** by +5.67 GiB at bs=4. Saving Q/K/V across 32 scanned layers exceeds the HBM peak.

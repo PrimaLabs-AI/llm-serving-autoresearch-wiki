@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp2-splash-bs2"
 branched_from: v6e8-llama3-8b-torchax-20260425-baseline
 verdict: potential
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Replaced HF SDPA's default backend with the canonical TPU splash-attention

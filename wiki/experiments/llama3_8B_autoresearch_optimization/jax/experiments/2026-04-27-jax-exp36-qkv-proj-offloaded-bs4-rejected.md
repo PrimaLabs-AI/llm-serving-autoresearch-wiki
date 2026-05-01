@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp36-qkv-proj-offloaded-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 MaxText `qkv_proj_offloaded` (host-offload Q/K/V activations) at bs=4 — 7,641/chip 42.8 % MFU, **-1.6 %**. Host PCIe latency outweighs recompute savings.

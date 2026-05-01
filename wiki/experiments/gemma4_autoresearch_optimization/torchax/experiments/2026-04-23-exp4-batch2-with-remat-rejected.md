@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD (exp3 code + --batch_size 2)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Doubled batch from 1 to 2 (on top of exp 3's full-remat code change), expecting the per-step amortization of 2× tokens to outweigh remat's compute tax. Didn't: per-token cost is still above baseline. Chain exp 3 + exp 4 is net **−9 % TPS** vs pre-remat baseline.

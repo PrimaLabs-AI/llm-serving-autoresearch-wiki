@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: pending
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Seq=2048 batch=2 runs on the JAX stack. **Torchax exp 10 / 11 / 23 all compile-OOM'd at this config** (all hit the ~1.25 GiB XLA compile-time planner margin). JAX stack fits cleanly — capability unlocked. TPS 31,809 (MFU 21.18 %), −8.1 % vs exp 36's b=3 s=1024 best; **dominated** for the current optimization target but preserved as the long-seq reference for the JAX stack.

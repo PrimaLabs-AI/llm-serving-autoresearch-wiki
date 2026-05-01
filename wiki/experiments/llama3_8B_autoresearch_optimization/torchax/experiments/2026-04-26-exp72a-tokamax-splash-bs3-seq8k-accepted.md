@@ -9,6 +9,8 @@ updated: 2026-04-26
 commit: "v6e8-llama3-8b-torchax-20260426-exp72a-tokamax-splash (image hf-v34)"
 branched_from: v6e8-llama3-8b-torchax-20260426-exp65-cxla-autotune
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **Program-target advanced.** Replacing the upstream

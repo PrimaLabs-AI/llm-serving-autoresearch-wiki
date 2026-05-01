@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: 835137a
 verdict: crash
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commit `835137a` message.*

@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp9-splash-autotuned-bs4"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp3-splash-bs4
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Full-training validation of the [exp 8 kernel autotune](2026-04-25-exp8-splash-kernel-autotune-potential.md):

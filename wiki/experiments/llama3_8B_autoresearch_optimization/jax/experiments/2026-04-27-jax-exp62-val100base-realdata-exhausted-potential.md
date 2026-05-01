@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp62-val100base-realdata-exhausted (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 100-step run with tokamax-splash perf knobs OFF (base2/fuse_recip/mlc=0) — also exhausts data at step 9. Loss step-for-step identical to exp 61 over 9 steps.

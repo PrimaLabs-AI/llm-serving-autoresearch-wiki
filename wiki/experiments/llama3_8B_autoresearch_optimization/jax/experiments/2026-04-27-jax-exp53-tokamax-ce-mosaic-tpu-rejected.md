@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp53-tokamax-ce-mosaic-tpu (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Tokamax CE = `mosaic_tpu` impl (default before; we use `chunked_xla` since torchax exp 62b) — 7,361/chip 41.3 % MFU, **-4.4 %**.

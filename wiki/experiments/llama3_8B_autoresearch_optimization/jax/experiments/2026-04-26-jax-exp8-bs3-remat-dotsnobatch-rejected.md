@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp8-bs3-remat-dotsnobatch (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 scan_remat_policy=dots_with_no_batch_dims_saveable — refuted, OOM (matmul outputs without batch dim too large to save).

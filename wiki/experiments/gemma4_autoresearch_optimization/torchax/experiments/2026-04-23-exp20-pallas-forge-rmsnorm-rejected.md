@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "1b0276f (integrate), eb4db37 (crash)"
 verdict: invalid
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commits `1b0276f`, `eb4db37`.*

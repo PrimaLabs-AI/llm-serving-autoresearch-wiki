@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "branch perfautoresearch/v6e4-20260423-exp26-scan-over-layers"
 verdict: parked
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Investigated whether the 42-layer `for layer in self.layers` loop in `Gemma4TextModel.forward` can be collapsed into a single `jax.lax.scan`. Goal: cut compile-step-0 (~150 s) to ~5–15 s and potentially reduce activation buffers. **Outcome: both Option A and Option B blocked; landed a diagnostic-only scaffold with graceful fallback; no performance change, no merge to trunk.**

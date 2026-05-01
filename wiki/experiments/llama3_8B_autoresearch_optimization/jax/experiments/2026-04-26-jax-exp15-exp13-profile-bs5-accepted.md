@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp15-exp13-profile-bs5 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Profile capture of exp 13 frontier (bs=5 + MaxText XLA stack) — MXU util 64.1 %, conv fusion 57.2 %, splash 24.6 %.

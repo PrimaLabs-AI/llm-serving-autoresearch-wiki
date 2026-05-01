@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD; train.py: jax.checkpoint(forward_loss, policy=checkpoint_dots_with_no_batch_dims)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Replaced exp 3's full remat with the **selective** policy `checkpoint_dots_with_no_batch_dims`: save the matmul outputs (dots), recompute only the cheap elementwise intermediates. Mechanism-wise this is a much better trade — +8.7 % step time (vs full remat's +27.5 %), no forward-doubling of all-gather, and **better** peak HBM (19.3 vs 21.1 GiB). Unlocks exp 6 (batch=2) which becomes the first TPS win.

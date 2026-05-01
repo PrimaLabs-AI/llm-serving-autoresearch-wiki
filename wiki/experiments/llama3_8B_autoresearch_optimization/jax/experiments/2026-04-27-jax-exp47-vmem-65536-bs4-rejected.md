@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp47-vmem-65536-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 VMEM=65536 (lower than default 98304) — 7,377/chip 41.4 % MFU, **-4.2 %**. Refuted hard.

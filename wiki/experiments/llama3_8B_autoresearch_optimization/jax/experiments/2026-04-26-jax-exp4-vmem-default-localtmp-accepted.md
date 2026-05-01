@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp4-vmem-default-localtmp (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Smoke test with profile written to local /tmp instead of GCS (workload-identity wrote 403 on /data/cache). Confirms gcsfuse-mount bypass via kubectl-cp.

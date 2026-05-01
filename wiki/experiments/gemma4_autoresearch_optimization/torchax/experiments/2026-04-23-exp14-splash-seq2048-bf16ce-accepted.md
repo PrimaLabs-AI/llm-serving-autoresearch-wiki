@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "n/a (consolidated into 71a45ae)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` row.*

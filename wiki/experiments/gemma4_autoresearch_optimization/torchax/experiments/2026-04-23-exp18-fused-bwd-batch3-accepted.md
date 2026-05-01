@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: e4d16dc
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + merge commit `e4d16dc`.*

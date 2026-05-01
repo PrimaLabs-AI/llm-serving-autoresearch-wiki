@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp42-no-bundle-aware-cost-model (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 `xla_tpu_use_bundle_aware_cost_model_for_fusions=false` (MaxText's claimed +3x bwd-fusion fix) — 7,566/chip 42.4 % MFU, **-2.6 %**. Doesn't apply to our shape.

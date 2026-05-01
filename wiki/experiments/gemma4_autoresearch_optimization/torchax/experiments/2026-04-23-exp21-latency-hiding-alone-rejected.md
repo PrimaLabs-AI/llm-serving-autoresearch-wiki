@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: b26e75c
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` + commit `b26e75c`.*

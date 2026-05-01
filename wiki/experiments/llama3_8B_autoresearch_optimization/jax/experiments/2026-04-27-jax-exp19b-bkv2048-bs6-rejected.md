@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp19b-bkv2048-bs6 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 exp 18 stack at bs=6 — OOM. bkv=2048 raises memory floor; bs=6 was OK with bkv=1024.

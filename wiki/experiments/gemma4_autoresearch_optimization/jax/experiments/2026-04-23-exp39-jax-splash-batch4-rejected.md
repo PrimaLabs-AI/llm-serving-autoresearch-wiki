@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: pending
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Bumped batch from 3 (exp 36, the JAX-stack best) to 4. **Batch=4 FITS on the JAX stack** where torchax exp 22 compile-time OOM'd at the same config — but **TPS regresses −6.4 % (34,614 → 32,402)**. Memory pressure at the HBM ceiling slows per-token execution: step time 355 → 506 ms for 4/3 tokens, giving per-token 28.88 → 30.86 µs.

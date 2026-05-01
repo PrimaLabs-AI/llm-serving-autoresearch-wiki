@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp18b-bkv2048-bs3 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 exp 18 stack at bs=3 (matches MaxText shape) — 7,374/chip 41.3 % MFU; **+4.3 % vs MaxText 7,069/chip at their exact shape**.

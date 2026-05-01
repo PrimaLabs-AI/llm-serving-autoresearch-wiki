@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp68-lr3e5-syn-bs4 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 100-step synthetic-data run at lr=3e-5 (matching MaxText) — loss 11.93 → 11.77 over 100 steps. Expected vs observed comparison with MaxText's 12.26→1.79.

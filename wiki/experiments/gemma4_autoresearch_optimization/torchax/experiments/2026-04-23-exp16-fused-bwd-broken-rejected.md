@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: bcaef89
 verdict: invalid
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 > *Backfilled from `RESULTS.tsv` row + commit `bcaef89` message.*

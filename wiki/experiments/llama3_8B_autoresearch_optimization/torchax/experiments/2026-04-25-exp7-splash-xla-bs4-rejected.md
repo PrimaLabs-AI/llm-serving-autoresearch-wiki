@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp7-splash-xla-bs4"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp3-splash-bs4
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Re-test of the [MaxText recipe XLA flag set](../../../../hypotheses/llama3-torchax-xla-recipe-flags.md)

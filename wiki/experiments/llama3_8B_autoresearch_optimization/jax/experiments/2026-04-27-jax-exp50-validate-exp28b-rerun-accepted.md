@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp50-validate-exp28b-rerun (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Re-run of exp 28b config to bound noise — 7,691/chip 43.1 % MFU. Calibrates the noise band: ±0.7 % per-chip (50 tok/s).

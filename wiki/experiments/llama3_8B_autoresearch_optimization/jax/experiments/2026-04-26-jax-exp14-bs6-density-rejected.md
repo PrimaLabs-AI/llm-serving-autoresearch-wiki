@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp14-bs6-density (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 bs=6 with MaxText stack — 7,063/chip 39.6 % MFU; regresses (memory pressure trade-off).

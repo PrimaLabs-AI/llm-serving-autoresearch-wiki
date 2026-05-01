@@ -9,6 +9,8 @@ updated: 2026-04-26
 commit: "v6e8-llama3-8b-torchax-20260426-exp55b-fp32-master-tokamax (image hf-v26)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp20-amp-fp32-master
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **Program-target advanced.** True AMP master (fp32 weights, bf16 compute)

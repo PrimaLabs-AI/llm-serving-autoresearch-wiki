@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD (exp5 code + --batch_size 2)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 **First TPS win.** With exp 5's selective remat freeing 10+ GiB HBM, doubling batch from 1 to 2 yields 30,925 TPS (+1.2 % vs baseline 30,570) with loss trajectory preserved. Modest but real — unblocks the next round of memory-ratchet experiments.

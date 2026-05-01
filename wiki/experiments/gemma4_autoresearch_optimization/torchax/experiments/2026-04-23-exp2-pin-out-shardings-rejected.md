@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD (torchax submodule 8f957d1); attempted train.py change; reverted"
 verdict: invalid
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Attempt to fix the ~150 s step-1 recompile by pinning `out_shardings` on `jax.jit` to equal the input shardings. Pre-trace `ValueError` from tied-weight sharding plumbing; reverted and filed. The step-1 recompile remains open — costs ~150 s per run of iteration overhead.

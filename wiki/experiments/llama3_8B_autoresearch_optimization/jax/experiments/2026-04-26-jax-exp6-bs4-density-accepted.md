@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp6-bs4-density (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Density check at bs=4 — 6,420/chip; modest +0.6 % vs bs=3 baseline pre-MaxText XLA stack.

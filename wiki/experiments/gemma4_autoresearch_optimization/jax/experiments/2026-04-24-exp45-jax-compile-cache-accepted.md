@@ -8,6 +8,8 @@ created: 2026-04-24
 updated: 2026-04-24
 commit: pending
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Set `JAX_COMPILATION_CACHE_DIR=/tmp/jax_compile_cache` and ran the exp 36 config twice. **First run populates the cache, second run hits it: step 0 compile drops from ~180 s → 14.58 s (12.3×), step 1 recompile drops from ~179 s → 13.84 s (12.9×). Total wall clock 389.4 s → 58.4 s (6.67× faster).** Steady-state TPS unchanged at ~34,600. Pure iteration-speed win, not TPS. Recommending default-on for future experiments since many (esp. parameter sweeps) reuse the same jit shape.

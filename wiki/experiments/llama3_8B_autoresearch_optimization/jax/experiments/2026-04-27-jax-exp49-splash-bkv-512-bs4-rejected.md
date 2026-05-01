@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp49-splash-bkv-512-bs4 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 SPLASH_BKV=512 (smaller than 1024 default) — 7,529/chip 42.2 % MFU, **-2.2 %**. Refuted.

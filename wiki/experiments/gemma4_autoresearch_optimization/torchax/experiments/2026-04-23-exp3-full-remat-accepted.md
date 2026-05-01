@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD; train.py: grad_fn = jax.value_and_grad(jax.checkpoint(forward_loss))"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Wrapped `forward_loss` with `jax.checkpoint` to recompute every activation during the backward pass instead of stashing intermediates. **Peak HBM dropped 29.69 → 21.08 GiB (−29%)** at the cost of **+27.5% step time** — within the predicted 30–40% full-remat overhead. This is the memory-first prep step for exp 4 (doubled batch).

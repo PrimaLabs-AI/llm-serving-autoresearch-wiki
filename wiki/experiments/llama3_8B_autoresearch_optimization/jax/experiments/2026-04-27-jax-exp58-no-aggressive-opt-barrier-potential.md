@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp58-no-aggressive-opt-barrier (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 `xla_tpu_aggressive_opt_barrier_removal=DISABLED` — 7,690/chip 43.1 % MFU, **-0.1 % within noise**.

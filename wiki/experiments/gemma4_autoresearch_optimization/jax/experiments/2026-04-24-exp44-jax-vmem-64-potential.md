@@ -8,6 +8,8 @@ created: 2026-04-24
 updated: 2026-04-24
 commit: pending
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Symmetric to [exp 41](2026-04-23-exp41-jax-vmem-512-rejected.md) which bumped VMEM to 512 MiB and regressed −13.8 %. This shrinks to 64 MiB. **Result: 34,461 TPS, 22.95 % MFU, −0.44 % flat (within noise).**

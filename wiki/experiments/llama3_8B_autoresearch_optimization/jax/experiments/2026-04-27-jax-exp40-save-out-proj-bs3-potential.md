@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp40-save-out-proj-bs3 (image precast-1)"
 verdict: potential
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 save_out_proj at bs=3 — 7,651/chip 42.9 % MFU, **+1.2 % over exp 31's bs=3 baseline**. Real lift, but still below exp 28b's bs=4 frontier (-1.5 %).

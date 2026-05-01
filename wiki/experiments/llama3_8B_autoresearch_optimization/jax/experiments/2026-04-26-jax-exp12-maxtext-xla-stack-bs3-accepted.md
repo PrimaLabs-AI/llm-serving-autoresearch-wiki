@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp12-maxtext-xla-stack-bs3 (image precast-1)"
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🟢 Add MaxText XLA flag stack (HOST_OFFLOAD_FLAGS + DISABLE_COLLECTIVE_MATMUL + recipe flags) at bs=3 — **7,254/chip 40.7 % MFU (+11.1 %)**.

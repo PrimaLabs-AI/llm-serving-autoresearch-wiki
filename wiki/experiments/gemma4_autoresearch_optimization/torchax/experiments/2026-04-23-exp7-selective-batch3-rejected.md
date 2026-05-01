@@ -8,6 +8,8 @@ created: 2026-04-23
 updated: 2026-04-23
 commit: "wiki:HEAD (exp5 code + --batch_size 3)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Attempted to push batch from 2 to 3 on top of exp 5/6's selective remat. Per-token efficiency **degraded** (32.3 → 33.7 µs) instead of improving — memory hit 97.6 % (0.74 GiB free), the allocator paid for it. **batch=2 is the sweet spot** at this config.

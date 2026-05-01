@@ -8,6 +8,8 @@ created: 2026-04-25
 updated: 2026-04-25
 commit: 9f1820b47
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 First MaxText reference run on the autoresearch v6e-8 GKE cluster — wires the MaxText stack (which `program-gke.md` had marked **TODO** on all three GKE clusters) to `alekseyv-tpu-v6e8-spot-xpk` and runs the official `tpu-recipes-v0.1.4` Llama3.1-8B v6e-8 recipe end-to-end. Steady-state **409.4 TFLOP/s/device, 7,069.7 Tokens/s/device, 44.6 % MFU** (median of steps 11–14 + 16–19); reproduces the recipe README's published 413.4 / 7,138.9 numbers within **−1.0 %** on TFLOP/s, **−1.0 %** on TPS — well inside run-to-run noise. Establishes a third reference baseline next to the (forthcoming) torchax and JAX/Flax-NNX stacks for Llama3-8B and unblocks MaxText as a target stack for the program-gke.md "Reference-ceiling summary" tables.

@@ -9,6 +9,8 @@ updated: 2026-04-25
 commit: "v6e8-llama3-8b-torchax-20260425-exp20-amp-fp32-master (image hf-v7)"
 branched_from: v6e8-llama3-8b-torchax-20260425-exp13-scan
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 🏆 **End-goal stack achieved.** The user-stated final target — *bf16

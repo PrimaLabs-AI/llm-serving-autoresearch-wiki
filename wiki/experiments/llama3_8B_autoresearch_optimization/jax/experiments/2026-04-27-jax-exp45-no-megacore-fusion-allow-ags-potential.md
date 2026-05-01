@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp45-no-megacore-fusion-allow-ags (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 `xla_tpu_megacore_fusion_allow_ags=false` — 7,707/chip 43.2 % MFU, **-0.8 % within noise**.

@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp38-qkv-proj-offloaded-bs5 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 qkv_proj_offloaded at bs=5 — 7,634/chip 42.8 % MFU, **-1.7 %**. Same conclusion at higher density.

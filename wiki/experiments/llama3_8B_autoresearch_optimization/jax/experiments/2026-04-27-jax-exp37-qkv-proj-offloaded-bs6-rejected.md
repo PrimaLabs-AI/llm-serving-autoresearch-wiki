@@ -8,6 +8,8 @@ created: 2026-04-27
 updated: 2026-04-27
 commit: "v6e8-llama3-8b-jax-20260427-exp37-qkv-proj-offloaded-bs6 (image precast-1)"
 verdict: refuted
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 qkv_proj_offloaded at bs=6 — runtime OOM. Host offload doesn't shrink runtime workspace floor.

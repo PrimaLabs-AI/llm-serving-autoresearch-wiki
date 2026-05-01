@@ -8,6 +8,8 @@ created: 2026-04-26
 updated: 2026-04-26
 commit: "v6e8-llama3-8b-jax-20260426-exp9-bs4-frontier-pre-maxtext-xla (image precast-1)"
 verdict: inconclusive
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 bs=4 with default LIBTPU flags (pre-MaxText-XLA-stack) — error at compile (memory layout). Parked.

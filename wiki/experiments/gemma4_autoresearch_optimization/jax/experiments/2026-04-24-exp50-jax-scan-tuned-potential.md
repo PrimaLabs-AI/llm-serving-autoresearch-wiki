@@ -8,6 +8,8 @@ created: 2026-04-24
 updated: 2026-04-24
 commit: TBD
 verdict: supported
+hardware: tpu-v6e
+host: legacy-tpu
 ---
 
 Refactored exp 49's scan-over-layers path to address the two root
