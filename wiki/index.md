@@ -20,14 +20,16 @@
 - [Chain-of-Thought](workloads/chain-of-thought.md) — short input, long output (1K–16K); stresses decode throughput
 - [Structured Output](workloads/structured-output.md) — JSON/schema-constrained decoding; measures constraint overhead
 
-## Hypotheses — ranked, open only (5)
+## Hypotheses — ranked, open only (4)
 | # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
 |---|---|---|---|---|---|---|
 | 1 | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM | multi-turn-agentic | 20-40% throughput | high | S |
 | 2 | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md) | vLLM | multi-turn-agentic | 50-80% more concurrency | high | S |
-| 3 | [SGLang RadixAttention vs vLLM](hypotheses/sglang-radx-vs-vllm-agentic.md) | SGLang | multi-turn-agentic | 15-30% vs vLLM | medium | M |
-| 4 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
-| 5 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
+| 3 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
+| 4 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
+
+### Retired (1)
+- [SGLang RadixAttention vs vLLM](hypotheses/sglang-radx-vs-vllm-agentic.md) — same-venv torch/flashinfer collision; reopen after per-engine venv split.
 
 ## ⭐ Featured reference — Pallas kernel directory
 

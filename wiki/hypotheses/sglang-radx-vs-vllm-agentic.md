@@ -5,14 +5,15 @@ tags: [serving, cross-engine, agentic, prefix-caching]
 model: ""
 engine: sglang
 workload: multi-turn-agentic
-status: open
+status: retired
 expected_gain: "15-30% higher throughput vs vLLM at concurrency=64"
 confidence: medium
 effort: M
 origin: human
 created: 2026-04-29
-updated: 2026-04-29
+updated: 2026-05-01
 hardware: any
+retired_reason: "vLLM and SGLang in the same venv collide on torch/transformers/flashinfer pins. Reopen once setup-cuda.sh splits per-engine venvs (slice 9 follow-up)."
 ---
 
 ## Statement
