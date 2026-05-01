@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-01] manual | seed wiki/hardware/
+
+**Op**: manual
+**Pages created**: wiki/hardware/h100.md, wiki/hardware/b200.md, wiki/hardware/mi300x.md
+**Pages updated**: wiki/index.md
+**Key result**: New `hardware` page type seeded; supports phase-3 hardware-as-dimension schema work.
+**Notes**: H200 and MI325X stubs deferred until first experiment touches them.
+
 ## [2026-05-01] ingest-codebase | tensorrt-llm
 
 **Op**: ingest-codebase

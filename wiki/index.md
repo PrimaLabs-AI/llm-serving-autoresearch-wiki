@@ -1,5 +1,5 @@
 # LLM Serving Performance Auto-optimization — Index
-*Last updated: 2026-04-29 — 192 + 13 new pages (3 engines + 5 workloads + 5 hypotheses)*
+*Last updated: 2026-04-29 — 195 + 13 new pages (3 engines + 5 workloads + 5 hypotheses)*
 
 *Methodology: autoresearch extended for serving (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
@@ -7,6 +7,11 @@
 - [vLLM](engines/vllm.md) — PagedAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [SGLang](engines/sglang.md) — RadixAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [TensorRT-LLM](engines/tensorrt-llm.md) — TensorRT-compiled serving; commit `` — **NVIDIA only** (H100/H200/B200)
+
+## Hardware (3)
+- [NVIDIA H100](hardware/h100.md) — Hopper, 80 GB HBM3, 989 BF16 TFLOPs / 1979 FP8 TFLOPs (SXM5)
+- [NVIDIA B200](hardware/b200.md) — Blackwell, 192 GB HBM3e, 2.25 BF16 PFLOPs / 4.5 FP8 PFLOPs / 9 FP4 PFLOPs
+- [AMD Instinct MI300X](hardware/mi300x.md) — CDNA3, 192 GB HBM3, 1.31 BF16 PFLOPs / 2.61 FP8 PFLOPs
 
 ## Workloads (5)
 - [Multi-Turn Agentic](workloads/multi-turn-agentic.md) — agent loops with tool calls, growing context, high prefix reuse
