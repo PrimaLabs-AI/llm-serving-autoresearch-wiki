@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-01] ingest-codebase | sglang
+
+**Op**: ingest-codebase
+**Pages created**: —
+**Pages updated**: wiki/engines/sglang.md, wiki/index.md
+**Key result**: SGLang ingested (knowledge-based, no local source); supported_hardware = [h100, h200, b200, mi300x]
+**Notes**: RadixAttention page complete; overlap scheduling and DP attention surfaces documented.
+
 ## [2026-05-01] ingest-codebase | vllm
 
 **Op**: ingest-codebase
