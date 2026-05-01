@@ -50,17 +50,20 @@ def collect_engines(root: Path) -> dict[str, list[str]]:
 
 
 def collect_hardware(root: Path) -> list[str]:
-    # Order by file mtime so the column order reflects the order in which
-    # hardware pages were authored (older generations first, then newer/alt
-    # vendors). This matches the expected display order in the spec.
-    out = []
-    paths = sorted((root / "wiki" / "hardware").glob("*.md"), key=lambda p: p.stat().st_mtime)
-    for md in paths:
+    # Order by `display_order:` frontmatter (defaulting to 999 → alphabetical
+    # tiebreak by stem). mtime-based ordering would reset on `git clone`.
+    rows = []
+    for md in (root / "wiki" / "hardware").glob("*.md"):
         fm = parse_frontmatter(md.read_text())
         if not fm or fm.get("type") != "hardware":
             continue
-        out.append(md.stem)
-    return out
+        try:
+            order = int(fm.get("display_order", "999"))
+        except ValueError:
+            order = 999
+        rows.append((order, md.stem))
+    rows.sort()
+    return [stem for _, stem in rows]
 
 
 def render_table(engines: dict[str, list[str]], hardware: list[str]) -> str:

@@ -29,18 +29,21 @@ body
     write(tmp_path / "wiki" / "hardware" / "h100.md", """---
 title: "NVIDIA H100"
 type: hardware
+display_order: 1
 ---
 body
 """)
     write(tmp_path / "wiki" / "hardware" / "b200.md", """---
 title: "NVIDIA B200"
 type: hardware
+display_order: 2
 ---
 body
 """)
     write(tmp_path / "wiki" / "hardware" / "mi300x.md", """---
 title: "AMD MI300X"
 type: hardware
+display_order: 3
 ---
 body
 """)
