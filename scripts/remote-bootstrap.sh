@@ -58,8 +58,13 @@ fi
 # Source .env so later steps see HF_TOKEN, MODEL
 set -a; source .env; set +a
 
-step "run setup.sh"
-./setup.sh || fail "setup"
+step "run setup.sh (skip claude/repo/tensorrt)"
+# --skip-repo:    we already rsync'd the working tree
+# --skip-claude:  Claude lives on the Mac, not the box, in mac-driver mode
+# --skip-tensorrt: TensorRT-LLM install is heavy and not needed for round 1
+#                  (vLLM is the engine for the top-ranked hypothesis).
+#                  Re-enable later via SETUP_FLAGS env override.
+./setup.sh ${SETUP_FLAGS:-"--skip-claude --skip-repo --skip-tensorrt"} || fail "setup"
 
 step "warm HF cache for ${MODEL:-<unset>}"
 if [ -n "${MODEL:-}" ]; then
