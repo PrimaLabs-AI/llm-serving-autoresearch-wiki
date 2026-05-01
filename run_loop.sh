@@ -12,7 +12,10 @@
 #
 # Usage:
 #   ./run_loop.sh --rounds 5 [--hosts h100-1,b200-1] [--model <id>] [--tag <name>]
-#   ./run_loop.sh --resume         # continue after a halt (experimental)
+#
+# After a halt (return code 2 from a wiki-conflict commit failure),
+# resolve the conflict in your working tree and rerun the same command —
+# completed rounds are already committed and won't be repeated.
 
 set -euo pipefail
 
@@ -24,7 +27,6 @@ ROUNDS=5
 HOSTS_FILTER=""
 MODEL=""
 TAG="loop"
-RESUME=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -32,7 +34,6 @@ while [[ $# -gt 0 ]]; do
         --hosts)  shift; HOSTS_FILTER="$1" ;;
         --model)  shift; MODEL="$1" ;;
         --tag)    shift; TAG="$1" ;;
-        --resume) RESUME=true ;;
         *)        echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift

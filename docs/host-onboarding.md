@@ -72,4 +72,4 @@ If a box's IP changes (cloud reboot), update `.hosts.toml`. The state stays vali
 
 ## Wiki write conflicts (FYI)
 
-If you edit `wiki/index.md` (or any other wiki file) while a loop is running, the round's `git commit` step will fail and the loop will halt cleanly with a conflict message. Resolve the conflict, then run `./run_loop.sh --resume` to continue.
+If you edit `wiki/index.md` (or any other wiki file) while a loop is running, the round's `git commit` step will fail and the loop will halt cleanly with a conflict message. Resolve the conflict, then rerun the same `./run_loop.sh …` command — already-committed rounds aren't repeated.

@@ -122,7 +122,13 @@ def cmd_state(args, root: Path) -> int:
         state[args.host] = {}
     if args.set is not None:
         state[args.host]["setup_state"] = args.set
-        state[args.host][f"setup_{'finished' if args.set == 'ready' else 'started'}"] = now_iso()
+        if args.set == "running":
+            state[args.host]["setup_started"] = now_iso()
+        elif args.set == "ready":
+            state[args.host]["setup_finished"] = now_iso()
+            state[args.host].pop("last_error", None)
+        else:  # failed | unreachable | pending
+            state[args.host]["last_state_change"] = now_iso()
     if args.set_error is not None:
         state[args.host]["last_error"] = args.set_error
     write_state(root, state)
