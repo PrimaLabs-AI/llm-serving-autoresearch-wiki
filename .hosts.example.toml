@@ -1,0 +1,38 @@
+# Copy to .hosts.toml and add one [hosts.<name>] block per provisioned box.
+# .hosts.toml is gitignored — your IPs and key paths stay on your Mac.
+#
+# Required fields per host:
+#   ip         — the public IP or DNS name
+#   user       — the SSH user (usually `ubuntu` or `root`)
+#   ssh_key    — path to the private key on your Mac (~ is expanded)
+#   vendor     — "nvidia" or "amd"
+#   hardware   — slug matching wiki/hardware/<slug>.md
+#                  (e.g. "h100", "h200", "b200", "mi300x", "mi325x")
+#   gpu_count  — number of GPUs in the box
+# Optional:
+#   notes      — free-text reminder for you (cloud, hourly cost, etc.)
+
+[hosts.h100-1]
+ip        = "203.0.113.42"
+user      = "ubuntu"
+ssh_key   = "~/.ssh/lambda_key"
+vendor    = "nvidia"
+hardware  = "h100"
+gpu_count = 8
+notes     = "Lambda Cloud, 8xH100 SXM5"
+
+# [hosts.b200-1]
+# ip        = "203.0.113.99"
+# user      = "ubuntu"
+# ssh_key   = "~/.ssh/runpod_key"
+# vendor    = "nvidia"
+# hardware  = "b200"
+# gpu_count = 8
+
+# [hosts.mi300x-1]
+# ip        = "203.0.113.11"
+# user      = "ubuntu"
+# ssh_key   = "~/.ssh/tensorwave_key"
+# vendor    = "amd"
+# hardware  = "mi300x"
+# gpu_count = 8

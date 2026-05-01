@@ -249,3 +249,7 @@ raw/benchmarks/*
 # pages and OBSERVATIONS.md (both tracked); RESULTS.tsv is just a working
 # ledger that's regenerable from the experiment pages.
 wiki/experiments/*/RESULTS.tsv
+
+# Mac-driver host registry — local config, never commit
+.hosts.toml
+.host-state.toml
