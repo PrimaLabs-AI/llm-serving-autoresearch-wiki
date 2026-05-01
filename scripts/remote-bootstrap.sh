@@ -1,35 +1,50 @@
 #!/usr/bin/env bash
 # Runs on the remote GPU box, executed via:
-#   ssh "$user@$ip" 'bash -s' < scripts/remote-bootstrap.sh
+#   ssh "$user@$ip" 'SKIP_GIT=1 bash -s' < scripts/remote-bootstrap.sh
 #
 # Output convention: prints DONE on success, FAIL=<reason> on failure
 # (caller greps for these on stdout).
 #
 # Idempotent: rerunnable. Picks up where it left off.
+#
+# Two modes (controlled by SKIP_GIT env):
+#   SKIP_GIT=1 (default for Mac-driver): the repo is pre-staged at $REPO_DIR
+#              by an rsync from the Mac. We just verify it's there and proceed.
+#   SKIP_GIT=0:                          we git clone / fetch / pull from
+#              GitHub (works only if the repo is public or the box has
+#              SSH access via agent forwarding or a deploy key).
 
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/PrimaLabs-AI/llm-serving-autoresearch-wiki}"
 REPO_DIR="${REPO_DIR:-$HOME/llm-serving-autoresearch-wiki}"
 BRANCH="${BRANCH:-mac-driver-multi-vendor}"
+SKIP_GIT="${SKIP_GIT:-0}"
 
 step() { echo ">> $*"; }
 fail() { echo "FAIL=$1" >&2; exit 1; }
 
-step "ensure git is installed"
-if ! command -v git >/dev/null 2>&1; then
-    sudo apt-get update -y >/dev/null 2>&1 || true
-    sudo apt-get install -y git || fail "git_install"
-fi
+if [ "$SKIP_GIT" = "1" ]; then
+    step "skip-git mode: verify repo pre-staged at $REPO_DIR"
+    [ -d "$REPO_DIR" ] || fail "repo_not_pre_staged"
+    [ -f "$REPO_DIR/setup.sh" ] || fail "repo_incomplete"
+    cd "$REPO_DIR"
+else
+    step "ensure git is installed"
+    if ! command -v git >/dev/null 2>&1; then
+        sudo apt-get update -y >/dev/null 2>&1 || true
+        sudo apt-get install -y git || fail "git_install"
+    fi
 
-step "ensure repo is checked out at $REPO_DIR"
-if [ ! -d "$REPO_DIR/.git" ]; then
-    git clone "$REPO_URL" "$REPO_DIR" || fail "git_clone"
+    step "ensure repo is checked out at $REPO_DIR"
+    if [ ! -d "$REPO_DIR/.git" ]; then
+        git clone "$REPO_URL" "$REPO_DIR" || fail "git_clone"
+    fi
+    cd "$REPO_DIR"
+    git fetch --all --prune || fail "git_fetch"
+    git checkout "$BRANCH" || fail "git_checkout"
+    git pull --ff-only origin "$BRANCH" || fail "git_pull"
 fi
-cd "$REPO_DIR"
-git fetch --all --prune || fail "git_fetch"
-git checkout "$BRANCH" || fail "git_checkout"
-git pull --ff-only origin "$BRANCH" || fail "git_pull"
 
 step "verify .env exists"
 if [ ! -f .env ]; then

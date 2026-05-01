@@ -22,10 +22,15 @@ The user message contains:
    ssh_key=$(python3 scripts/host_registry.py get $host ssh_key)
    ```
 
-4. **Sync the branch on the remote box:**
+4. **Sync the Mac's repo to the box** (the box has no GitHub access; Mac is the source of truth):
    ```bash
-   ssh -i "$ssh_key" "$ssh_target" \
-       "cd ~/llm-serving-autoresearch-wiki && git fetch && git checkout $(git rev-parse --abbrev-ref HEAD) && git pull --ff-only"
+   rsync -az --delete \
+       --exclude=.git --exclude=.venv --exclude=__pycache__ \
+       --exclude=.hosts.toml --exclude=.host-state.toml \
+       --exclude=raw/profiles --exclude=raw/benchmarks --exclude=raw/loops \
+       --exclude=raw/code --exclude=raw/sources \
+       -e "ssh -i $ssh_key" \
+       ./ "${ssh_target}:llm-serving-autoresearch-wiki/"
    ```
 
 5. **Run the benchmark on the box:**

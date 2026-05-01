@@ -23,18 +23,42 @@ ssh_key_expanded="${ssh_key/#\~/$HOME}"
 echo "[remote-setup] $HOST → $ssh_target"
 python3 "$SCRIPT_DIR/host_registry.py" --root "$REPO_DIR" state "$HOST" --set running
 
-# Stream the bootstrap to the box; capture stdout and stderr separately
+ssh_opts=(
+    -i "$ssh_key_expanded"
+    -o StrictHostKeyChecking=accept-new
+    -o ControlMaster=auto
+    -o "ControlPath=$HOME/.ssh/cm-%r@%h:%p"
+    -o ControlPersist=10m
+)
+
+# Stage 1: rsync the Mac's repo to the box. The box is a stateless worker
+# (per the design); the Mac is sole authoritative state. We exclude .git
+# (large, unneeded), raw/ (multi-GB benchmark/profile artifacts), .venv,
+# and the local registry files (.hosts.toml, .host-state.toml).
+echo "[remote-setup] $HOST: rsync repo → $ssh_target:llm-serving-autoresearch-wiki/"
+rsync -az --delete \
+    --exclude=.git \
+    --exclude=.venv \
+    --exclude=__pycache__ \
+    --exclude=.pytest_cache \
+    --exclude=.hosts.toml \
+    --exclude=.host-state.toml \
+    --exclude=raw/profiles \
+    --exclude=raw/benchmarks \
+    --exclude=raw/loops \
+    --exclude=raw/code \
+    --exclude=raw/sources \
+    -e "ssh ${ssh_opts[*]}" \
+    "$REPO_DIR/" "$ssh_target:llm-serving-autoresearch-wiki/"
+
+# Stage 2: stream the bootstrap to the box; capture stdout and stderr separately
 out_file="$(mktemp)"
 err_file="$(mktemp)"
 trap 'rm -f "$out_file" "$err_file"' EXIT
 
 set +e
-ssh -i "$ssh_key_expanded" \
-    -o StrictHostKeyChecking=accept-new \
-    -o ControlMaster=auto \
-    -o ControlPath="$HOME/.ssh/cm-%r@%h:%p" \
-    -o ControlPersist=10m \
-    "$ssh_target" 'bash -s' < "$SCRIPT_DIR/remote-bootstrap.sh" \
+ssh "${ssh_opts[@]}" \
+    "$ssh_target" 'SKIP_GIT=1 bash -s' < "$SCRIPT_DIR/remote-bootstrap.sh" \
     > "$out_file" 2> "$err_file"
 rc=$?
 set -e
