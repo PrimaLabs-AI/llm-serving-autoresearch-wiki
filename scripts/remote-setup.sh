@@ -32,15 +32,21 @@ ssh_opts=(
 )
 
 # Stage 1: rsync the Mac's repo to the box. The box is a stateless worker
-# (per the design); the Mac is sole authoritative state. We exclude .git
-# (large, unneeded), raw/ (multi-GB benchmark/profile artifacts), .venv,
-# and the local registry files (.hosts.toml, .host-state.toml).
+# (per the design); the Mac is sole authoritative state. Excludes:
+#   - .git, raw/* artifacts: large/unneeded
+#   - .hosts.toml/.host-state.toml: Mac-only secrets
+#   - venv/ + .venv/: BOX-side install artifacts. We never want rsync's
+#     --delete to wipe the engines we just spent 10 min installing.
+#   - node_modules/, *.egg-info: same rationale.
 echo "[remote-setup] $HOST: rsync repo → $ssh_target:llm-serving-autoresearch-wiki/"
 rsync -az --delete \
     --exclude=.git \
+    --exclude=venv \
     --exclude=.venv \
     --exclude=__pycache__ \
     --exclude=.pytest_cache \
+    --exclude=node_modules \
+    --exclude='*.egg-info' \
     --exclude=.hosts.toml \
     --exclude=.host-state.toml \
     --exclude=raw/profiles \

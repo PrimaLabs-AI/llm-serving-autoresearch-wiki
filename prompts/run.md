@@ -22,10 +22,12 @@ The user message contains:
    ssh_key=$(python3 scripts/host_registry.py get $host ssh_key)
    ```
 
-4. **Sync the Mac's repo to the box** (the box has no GitHub access; Mac is the source of truth):
+4. **Sync the Mac's repo to the box** (the box has no GitHub access; Mac is the source of truth). The exclude list MUST include `venv/` so we don't delete the engines pre-installed on the box:
    ```bash
    rsync -az --delete \
-       --exclude=.git --exclude=.venv --exclude=__pycache__ \
+       --exclude=.git --exclude=venv --exclude=.venv \
+       --exclude=__pycache__ --exclude=.pytest_cache \
+       --exclude=node_modules --exclude='*.egg-info' \
        --exclude=.hosts.toml --exclude=.host-state.toml \
        --exclude=raw/profiles --exclude=raw/benchmarks --exclude=raw/loops \
        --exclude=raw/code --exclude=raw/sources \
