@@ -112,11 +112,49 @@ PICK_TIMEOUT="${PICK_TIMEOUT:-300}"      # 5 min — PICK is light, just reads p
 RUN_TIMEOUT="${RUN_TIMEOUT:-2400}"        # 40 min — RUN does the actual benchmark
 RETRY_COOLDOWN="${RETRY_COOLDOWN:-60}"
 
-# Run claude --print once with a hard timeout; return its stdout via echo.
-# Returns 0 on completion, 124 on timeout, other on claude error.
+# Run claude --print once with a hard wall-clock cap; return its stdout via
+# echo. Returns claude's own rc, or 124 if the timeout watchdog killed it.
+# Pure bash — macOS has no GNU `timeout`/`gtimeout` by default.
 _claude_call() {
     local timeout_s="$1"; shift
-    timeout "$timeout_s" claude --print "$@" 2>>"$LOG_FILE"
+
+    local tmpfile
+    tmpfile="$(mktemp)"
+
+    # Spawn claude --print, capture stdout to temp file.
+    claude --print "$@" >"$tmpfile" 2>>"$LOG_FILE" &
+    local cl_pid=$!
+
+    # Watchdog: after the timeout, SIGTERM claude; if it doesn't exit, SIGKILL.
+    (
+        sleep "$timeout_s"
+        if kill -0 "$cl_pid" 2>/dev/null; then
+            kill -TERM "$cl_pid" 2>/dev/null
+            sleep 3
+            kill -KILL "$cl_pid" 2>/dev/null
+        fi
+    ) &
+    local watch_pid=$!
+
+    local rc=0
+    set +e
+    wait "$cl_pid"
+    rc=$?
+    set -e
+
+    # Reap watchdog.
+    kill -KILL "$watch_pid" 2>/dev/null
+    wait "$watch_pid" 2>/dev/null || true
+
+    cat "$tmpfile"
+    rm -f "$tmpfile"
+
+    # If claude was killed by our watchdog, exit code is 137 or 143.
+    # Re-map both to 124 so callers can detect "timed out".
+    if [ "$rc" = "137" ] || [ "$rc" = "143" ]; then
+        return 124
+    fi
+    return "$rc"
 }
 
 # Returns the hypothesis slug picked, or "none"
