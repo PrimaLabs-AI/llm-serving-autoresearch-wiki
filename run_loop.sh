@@ -115,42 +115,48 @@ RETRY_COOLDOWN="${RETRY_COOLDOWN:-60}"
 # Run claude --print once with a hard wall-clock cap; return its stdout via
 # echo. Returns claude's own rc, or 124 if the timeout watchdog killed it.
 # Pure bash — macOS has no GNU `timeout`/`gtimeout` by default.
+#
+# Watchdog runs in a setsid'd subshell so killing its sleep child doesn't
+# orphan it (which previously left `sleep 2400` running parentless and
+# wedged the parent subshell at `wait`). Coalesce to one cleanup branch
+# that always reaps both children before returning.
 _claude_call() {
     local timeout_s="$1"; shift
 
     local tmpfile
     tmpfile="$(mktemp)"
 
-    # Spawn claude --print, capture stdout to temp file.
     claude --print "$@" >"$tmpfile" 2>>"$LOG_FILE" &
     local cl_pid=$!
 
-    # Watchdog: after the timeout, SIGTERM claude; if it doesn't exit, SIGKILL.
-    (
-        sleep "$timeout_s"
-        if kill -0 "$cl_pid" 2>/dev/null; then
-            kill -TERM "$cl_pid" 2>/dev/null
-            sleep 3
-            kill -KILL "$cl_pid" 2>/dev/null
-        fi
-    ) &
+    # Watchdog: kill claude after timeout. Done in a function so we can
+    # SIGKILL the whole process group (watchdog + its sleep child).
+    _watchdog() {
+        local pid="$1" t="$2"
+        sleep "$t"
+        kill -TERM "$pid" 2>/dev/null
+        sleep 3
+        kill -KILL "$pid" 2>/dev/null
+    }
+    _watchdog "$cl_pid" "$timeout_s" &
     local watch_pid=$!
 
-    local rc=0
     set +e
     wait "$cl_pid"
-    rc=$?
+    local rc=$?
     set -e
 
-    # Reap watchdog.
+    # Reap watchdog and its descendant sleep. `pkill -P` kills children by
+    # parent PID; -KILL guarantees no graceful-shutdown stall. The plain
+    # kill of $watch_pid covers the case where the watchdog has already
+    # progressed past the sleep.
+    pkill -KILL -P "$watch_pid" 2>/dev/null || true
     kill -KILL "$watch_pid" 2>/dev/null
     wait "$watch_pid" 2>/dev/null || true
 
     cat "$tmpfile"
     rm -f "$tmpfile"
 
-    # If claude was killed by our watchdog, exit code is 137 or 143.
-    # Re-map both to 124 so callers can detect "timed out".
     if [ "$rc" = "137" ] || [ "$rc" = "143" ]; then
         return 124
     fi
