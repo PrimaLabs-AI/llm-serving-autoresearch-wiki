@@ -164,7 +164,12 @@ setup_venv() {
     source venv/bin/activate
     pip install --upgrade pip setuptools wheel
 
-    log "Virtual environment ready at venv/"
+    # bench/ tooling — evalscope is the load generator the autoresearch loop drives
+    # via bench/scripts/experiments/.../run_matrix.sh. Small dep tree, public package,
+    # safe to install before the engine pip installs (no version overlap with vLLM).
+    pip install --quiet "evalscope[perf]" aiohttp numpy
+
+    log "Virtual environment ready at venv/ (evalscope installed)"
 }
 
 # ---------------------------------------------------------------------------

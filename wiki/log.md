@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] manual | self-contain bench tooling, ingest vllm-tune, prep round 8
+
+**Op**: manual (slice 9 follow-up)
+**Pages created**: wiki/codebases/vllm-tune.md; 7 hypotheses (gptoss-20b-{base,k2,nospec,blk64,batch8k,nofp8kv,lean}-on-h100); 4 sources (2026-04-gptoss-20b-{v019-findings,config-search-plan,h100-oom}, 2026-04-gptoss-120b-2xmi300x-throughput); 3 bench scripts (run_matrix.sh, aggregate.py, sweep_api_providers_evalscope.py)
+**Pages updated**: wiki/index.md (ranked list 4 → 11; gpt-oss-20B program now top 7); prompts/run.md (rewritten — drives bench/ inside wiki, no longer touches ~/vllm-tune); scripts/setup-cuda.sh (evalscope[perf] now installed in venv at first bootstrap)
+**Key result**: Wiki is now self-contained. Removed dependency on ~/vllm-tune being checked out on every box. The bench/ scripts ride along with the existing rsync; future bootstraps install evalscope automatically. h100-1's wiki venv has evalscope 1.6.1 installed (one-time, manual). Round 8 ready: PICK should choose LEAN, RUN should drive bench/scripts/.../run_matrix.sh --configs LEAN.
+**Notes**: This solves the "no per-box setup" requirement. The Mac is the single source of truth for wiki + bench/; rsync ships both atomically. Each new box needs: Docker, NVIDIA driver, the vllm/vllm-openai images already pulled, model weights at /srv/gptoss-models/, and `setup-cuda.sh` having run once. After that, every round is a fresh rsync + a single SSH command.
+
 ## [2026-05-04] run-benchmark | gpt-oss-20B OPT on h100-1
 
 **Op**: run-benchmark

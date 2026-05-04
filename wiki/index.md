@@ -24,16 +24,28 @@
 - [Chain-of-Thought](workloads/chain-of-thought.md) — short input, long output (1K–16K); stresses decode throughput
 - [Structured Output](workloads/structured-output.md) — JSON/schema-constrained decoding; measures constraint overhead
 
-## Hypotheses — ranked, open only (4)
+## Hypotheses — ranked, open only (11)
 
+**gpt-oss-20B 9-config matrix on H100 (active program — round 7 OPT supported)**
 
-| #   | Hypothesis                                                                               | Engine | Workload           | Expected                | Confidence | Effort |
-| --- | ---------------------------------------------------------------------------------------- | ------ | ------------------ | ----------------------- | ---------- | ------ |
-| 1   | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM   | multi-turn-agentic | 20-40% throughput       | high       | S      |
-| 2   | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md)  | vLLM   | multi-turn-agentic | 50-80% more concurrency | high       | S      |
-| 3   | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md)   | vLLM   | parallel-tool-use  | 25-40% TTFT reduction   | medium     | S      |
-| 4   | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md)      | vLLM   | chain-of-thought   | 1.5-2x output tok/s     | medium     | M      |
+| # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
+|---|---|---|---|---|---|---|
+| 1 | [LEAN — k=2 + blk=64 + batch=8k compound](hypotheses/gptoss-20b-lean-on-h100.md) | vLLM | multi-turn-agentic | beats OPT on sharegpt (re-confirms shipping default) | high | S |
+| 2 | [K2 — Eagle3 k=2 instead of k=3](hypotheses/gptoss-20b-k2-on-h100.md) | vLLM | multi-turn-agentic | +~5% sharegpt tok/s, ≤−3% decode | high | S |
+| 3 | [BATCH8K — max_num_batched_tokens=8192](hypotheses/gptoss-20b-batch8k-on-h100.md) | vLLM | multi-turn-agentic | ≤−2% prefill, possible +decode | medium | S |
+| 4 | [BLK64 — block_size=64 vs 128](hypotheses/gptoss-20b-blk64-on-h100.md) | vLLM | multi-turn-agentic | frees KV budget on 20B GQA | medium | S |
+| 5 | [NOSPEC — drop speculation entirely](hypotheses/gptoss-20b-nospec-on-h100.md) | vLLM | multi-turn-agentic | isolates Eagle3 cost on 20s prefill TTFT | high | S |
+| 6 | [NOFP8KV — drop fp8 KV cache](hypotheses/gptoss-20b-nofp8kv-on-h100.md) | vLLM | multi-turn-agentic | KV not bottleneck at 80GB/c≤512 | medium | S |
+| 7 | [BASE — stock vLLM 0.19 floor](hypotheses/gptoss-20b-base-on-h100.md) | vLLM | multi-turn-agentic | OPT delivers ≥1.5× sharegpt vs BASE | high | S |
 
+**Pre-existing seed hypotheses (Llama-3-8B, deferred — different model/stack)**
+
+| # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
+|---|---|---|---|---|---|---|
+| 8 | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM | multi-turn-agentic | 20-40% throughput | high | S |
+| 9 | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md) | vLLM | multi-turn-agentic | 50-80% more concurrency | high | S |
+| 10 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
+| 11 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
 
 ### Supported (1)
 
