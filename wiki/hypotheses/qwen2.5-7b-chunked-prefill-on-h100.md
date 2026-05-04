@@ -6,7 +6,7 @@ model: qwen2.5-7b
 engine: vllm
 workload: multi-turn-agentic
 hardware: h100
-status: open
+status: invalid
 expected_gain: "−30 to −50% prefill TTFT p50 vs BASE; ≤noise change in throughput"
 confidence: medium
 effort: S

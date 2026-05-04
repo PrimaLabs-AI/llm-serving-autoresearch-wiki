@@ -30,8 +30,7 @@
 
 | # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
 |---|---|---|---|---|---|---|
-| 1 | [Qwen2.5-7B chunked-prefill on H100](hypotheses/qwen2.5-7b-chunked-prefill-on-h100.md) | vLLM | multi-turn-agentic | −30-50% prefill TTFT vs BASE | medium | S |
-| 2 | [Qwen2.5-7B fp8 KV cache on H100](hypotheses/qwen2.5-7b-fp8-kv-on-h100.md) | vLLM | multi-turn-agentic | +50-100% max concurrency vs BASE | medium | S |
+| 1 | [Qwen2.5-7B fp8 KV cache on H100](hypotheses/qwen2.5-7b-fp8-kv-on-h100.md) | vLLM | multi-turn-agentic | +50-100% max concurrency vs BASE | medium | S |
 
 **gpt-oss-20B 9-config matrix on H100 (active program — round 7 OPT supported)**
 
@@ -61,7 +60,11 @@
 
 ### Refuted (1)
 
-- [Qwen2.5-7B prefix-caching on H100](hypotheses/qwen2.5-7b-prefix-caching-on-h100.md) — sharegpt +0.9% (predicted +10-20%). Realized prefix cache hit rate was 0.78% — the workload simply has no prefix overlap. Test workloads ≠ production multi-turn. See [round-1 experiment](experiments/2026-05-04-qwen2.5-7b-prefix-caching-on-h100.md).
+- [Qwen2.5-7B prefix-caching on H100](hypotheses/qwen2.5-7b-prefix-caching-on-h100.md) — sharegpt +0.9% (predicted +10-20%). NOTE: subsequent investigation (round 3) found vLLM 0.19 has prefix-caching default-on — this test was effectively a no-op. Re-classify as invalid pending a proper disable-vs-default test. See [round-1 experiment](experiments/2026-05-04-qwen2.5-7b-prefix-caching-on-h100.md) and [analysis](analyses/2026-05-04-qwen2.5-7b-h100-program-status.md).
+
+### Invalid (1)
+
+- [Qwen2.5-7B chunked-prefill on H100](hypotheses/qwen2.5-7b-chunked-prefill-on-h100.md) — boot log confirmed vLLM 0.19 has `enable_chunked_prefill=True` default. The `--enable-chunked-prefill` flag was a no-op; tested config = BASE config. See [round-3 experiment](experiments/2026-05-04-qwen2.5-7b-chunked-prefill-on-h100.md) and [analysis](analyses/2026-05-04-qwen2.5-7b-h100-program-status.md).
 
 ### Retired (1)
 

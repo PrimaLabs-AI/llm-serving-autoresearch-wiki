@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] run-benchmark | Qwen2.5-7B chunked-prefill ablation — INVALID (vLLM 0.19 default-on)
+
+**Op**: run-benchmark (autopilot round 3/3 of qwen7b-ablations-v2)
+**Pages created**: wiki/experiments/2026-05-04-qwen2.5-7b-chunked-prefill-on-h100.md, wiki/analyses/2026-05-04-qwen2.5-7b-h100-program-status.md
+**Pages updated**: wiki/hypotheses/qwen2.5-7b-chunked-prefill-on-h100.md (status=invalid), wiki/index.md (added Invalid section, demoted prefix-caching's verdict to "invalid pending re-test", chunked-prefill removed from open list)
+**Key result**: Boot log of CHUNKED run shows `enable_chunked_prefill=True` and `enable_prefix_caching=True`. **BASE rerun's boot log shows the SAME**. vLLM 0.19.0 has both flags default-on, so `--enable-chunked-prefill` is a no-op — we tested an identical config twice. Prefill TTFT 78.7s → 78.5s confirms identical behavior, not feature absence. Verdict: invalid. Forces re-classification of round 1 (PFXCACHE) as also invalid for the same root cause.
+**Notes**: This is the load-bearing methodology finding of the program — see [analysis](wiki/analyses/2026-05-04-qwen2.5-7b-h100-program-status.md). Two of three queued ablations were no-op tests. Next genuine ablation = fp8 KV (rank 1; opt-in flag, not default). Round 2 was a wasted repeat of round 1 due to a wiki-state race in PICK; round 3 wrote up cleanly. Variance observation: decode @ c=256 ranges 5,973-8,009 across 4 BASE-shape runs (~12% RSD); sharegpt @ c=512 ranges 8,279-8,357 (~0.5% RSD) — sharegpt is the only reliable cell for differential studies. Autopilot writeup phase stalled in round 3 too; wrote both the experiment page and the synthesis analysis manually from the structured CSV + boot log greps.
+
 ## [2026-05-04] run-benchmark | Qwen2.5-7B prefix-caching ablation — refuted on test workloads
 
 **Op**: run-benchmark (autopilot round 1/3 of qwen7b-ablations-v2)
