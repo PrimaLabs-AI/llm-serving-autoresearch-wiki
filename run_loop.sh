@@ -104,6 +104,21 @@ setup_pass() {
     done
 }
 
+# Caps and retries for claude --print invocations.
+# Anthropic API hiccups (e.g. classifier outages) can cause `claude --print`
+# to hang for tens of minutes. We bound it: kill after PICK_TIMEOUT/RUN_TIMEOUT,
+# retry once after a short cooldown, and only then surface failure.
+PICK_TIMEOUT="${PICK_TIMEOUT:-300}"      # 5 min — PICK is light, just reads pages
+RUN_TIMEOUT="${RUN_TIMEOUT:-2400}"        # 40 min — RUN does the actual benchmark
+RETRY_COOLDOWN="${RETRY_COOLDOWN:-60}"
+
+# Run claude --print once with a hard timeout; return its stdout via echo.
+# Returns 0 on completion, 124 on timeout, other on claude error.
+_claude_call() {
+    local timeout_s="$1"; shift
+    timeout "$timeout_s" claude --print "$@" 2>>"$LOG_FILE"
+}
+
 # Returns the hypothesis slug picked, or "none"
 pick_turn() {
     local round="$1"
@@ -119,10 +134,21 @@ registry_summary:
 $registry_summary
 EOF
 )
-    local out
-    out="$(claude --print \
-        --append-system-prompt "$(cat "$SCRIPT_DIR/prompts/pick.md")" \
-        "$user_msg" 2>>"$LOG_FILE")"
+    local out=""
+    local rc
+    for attempt in 1 2; do
+        set +e
+        out="$(_claude_call "$PICK_TIMEOUT" \
+            --append-system-prompt "$(cat "$SCRIPT_DIR/prompts/pick.md")" \
+            "$user_msg")"
+        rc=$?
+        set -e
+        if [ -n "$out" ] && echo "$out" | grep -qE '^HYPOTHESIS='; then
+            break
+        fi
+        log "  PICK turn attempt $attempt: rc=$rc, no HYPOTHESIS= line; sleeping ${RETRY_COOLDOWN}s before retry"
+        sleep "$RETRY_COOLDOWN"
+    done
     echo "$out" | grep -E '^HYPOTHESIS=' | head -1 | sed 's/^HYPOTHESIS=//'
 }
 
@@ -139,10 +165,21 @@ run_slug=$run_slug
 model=$MODEL
 EOF
 )
-    local out
-    out="$(claude --print \
-        --append-system-prompt "$(cat "$SCRIPT_DIR/prompts/run.md")" \
-        "$user_msg" 2>>"$LOG_FILE")"
+    local out=""
+    local rc
+    for attempt in 1 2; do
+        set +e
+        out="$(_claude_call "$RUN_TIMEOUT" \
+            --append-system-prompt "$(cat "$SCRIPT_DIR/prompts/run.md")" \
+            "$user_msg")"
+        rc=$?
+        set -e
+        if [ -n "$out" ] && echo "$out" | grep -qE '^EXPERIMENT=' && echo "$out" | grep -qE '^VERDICT='; then
+            break
+        fi
+        log "  RUN turn attempt $attempt: rc=$rc, no clean EXPERIMENT=/VERDICT= pair; sleeping ${RETRY_COOLDOWN}s before retry"
+        sleep "$RETRY_COOLDOWN"
+    done
     local exp_line verdict_line
     exp_line="$(echo "$out" | grep -E '^EXPERIMENT=' | head -1)"
     verdict_line="$(echo "$out" | grep -E '^VERDICT=' | head -1)"
