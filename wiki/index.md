@@ -1,19 +1,23 @@
 # LLM Serving Performance Auto-optimization — Index
+
 *Last updated: 2026-04-29 — 195 + 13 new pages (3 engines + 5 workloads + 5 hypotheses)*
 
 *Methodology: autoresearch extended for serving (see [README](../README.md) + [SCHEMA](../SCHEMA.md)).*
 
 ## Engines (3)
+
 - [vLLM](engines/vllm.md) — PagedAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [SGLang](engines/sglang.md) — RadixAttention serving; commit `` — supported on H100/H200/B200/MI300X
 - [TensorRT-LLM](engines/tensorrt-llm.md) — TensorRT-compiled serving; commit `` — **NVIDIA only** (H100/H200/B200)
 
 ## Hardware (3)
+
 - [NVIDIA H100](hardware/h100.md) — Hopper, 80 GB HBM3, 989 BF16 TFLOPs / 1979 FP8 TFLOPs (SXM5)
 - [NVIDIA B200](hardware/b200.md) — Blackwell, 192 GB HBM3e, 2.25 BF16 PFLOPs / 4.5 FP8 PFLOPs / 9 FP4 PFLOPs
 - [AMD Instinct MI300X](hardware/mi300x.md) — CDNA3, 192 GB HBM3, 1.31 BF16 PFLOPs / 2.61 FP8 PFLOPs
 
 ## Workloads (5)
+
 - [Multi-Turn Agentic](workloads/multi-turn-agentic.md) — agent loops with tool calls, growing context, high prefix reuse
 - [Parallel Tool Use](workloads/parallel-tool-use.md) — burst of parallel requests sharing long prefix, short output
 - [Long Context RAG](workloads/long-context-rag.md) — long input (10K–128K), short output; stresses prefill and KV cache capacity
@@ -21,14 +25,22 @@
 - [Structured Output](workloads/structured-output.md) — JSON/schema-constrained decoding; measures constraint overhead
 
 ## Hypotheses — ranked, open only (4)
-| # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
-|---|---|---|---|---|---|---|
-| 1 | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM | multi-turn-agentic | 20-40% throughput | high | S |
-| 2 | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md) | vLLM | multi-turn-agentic | 50-80% more concurrency | high | S |
-| 3 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
-| 4 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
+
+
+| #   | Hypothesis                                                                               | Engine | Workload           | Expected                | Confidence | Effort |
+| --- | ---------------------------------------------------------------------------------------- | ------ | ------------------ | ----------------------- | ---------- | ------ |
+| 1   | [Prefix caching for multi-turn agentic](hypotheses/prefix-caching-multi-turn-agentic.md) | vLLM   | multi-turn-agentic | 20-40% throughput       | high       | S      |
+| 2   | [FP8 quantization increases max concurrency](hypotheses/fp8-quantization-throughput.md)  | vLLM   | multi-turn-agentic | 50-80% more concurrency | high       | S      |
+| 3   | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md)   | vLLM   | parallel-tool-use  | 25-40% TTFT reduction   | medium     | S      |
+| 4   | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md)      | vLLM   | chain-of-thought   | 1.5-2x output tok/s     | medium     | M      |
+
+
+### Supported (1)
+
+- [gpt-oss-20B OPT on 1× H100 — per-replica baseline](hypotheses/gptoss-20b-opt-baseline.md) — established 13,945 / 3,501 / 16,192 output tok/s on decode/prefill/sharegpt at the per-replica peak concurrencies. See [2026-05-04 experiment](experiments/2026-05-04-gptoss20b-h100-opt.md).
 
 ### Retired (1)
+
 - [SGLang RadixAttention vs vLLM](hypotheses/sglang-radx-vs-vllm-agentic.md) — same-venv torch/flashinfer collision; reopen after per-engine venv split.
 
 ## ⭐ Featured reference — Pallas kernel directory
@@ -36,6 +48,7 @@
 **[Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md)** — the single most load-bearing reference document in this wiki. A repo-by-repo catalog of **~200 Pallas kernels across ~30 open-source repositories**, each row with a clickable link to the source code, backend (Mosaic-TPU / Mosaic-GPU SM90/SM100 / Triton / XLA fallback), stability tier, any performance claim quoted verbatim from source, application use case, and known callers. Cross-cutting tables group kernels by function (attention, paged-KV, ring, MoE grouped matmul, normalization, GLU, matmul, collectives, SSM/linear-recurrence, cross-entropy, PRNG, non-ML).
 
 Use this page to answer:
+
 - *"Is there a public Pallas implementation of X?"* — look up X in the [functional-category tables](analyses/2026-04-23-pallas-kernel-directory.md#kernel-inventory-by-functional-category).
 - *"Where is the canonical / production version of X?"* — every row has a `[file](https://github.com/…)` link to the definition.
 - *"Which repos should this wiki ingest next?"* — see [recommended Wave-4 ingestion order](analyses/2026-04-23-pallas-kernel-directory.md#recommended-next-ingestion-wave-wave-4-proposal) ranked by novelty-vs-tokamax and relevance.
@@ -53,6 +66,7 @@ Use this page to answer:
 Companion document: [Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — the predecessor repo-level inventory this directory refines to kernel-level.
 
 **Status of open Pallas-related wiki hypotheses after this directory closed**:
+
 - Ring Attention Pallas impl → **found** (maxdiffusion, haoliuhl, ejkernel — three patterns to choose among).
 - Fused GLU Pallas reference → **found** (AlphaFold3 @ tag v3.0.1; pin the tag).
 - Mamba / SSM Pallas → **found** (axlearn — only public source).
@@ -62,30 +76,37 @@ Companion document: [Pallas kernel source survey](analyses/2026-04-23-pallas-ker
 ---
 
 ## Models (2)
+
 - [Gemma 4 E4B — TPU autoresearch optimization](experiments/gemma4_autoresearch_optimization/README.md) — program page for `google/gemma-4-E4B` on TPU v6e via torchax/JAX. Status: **active, baseline not yet captured**. 16 open hypotheses consolidated from Wave 1/2 findings. *Note: filed under `experiments/<program>/` rather than `models/` — see schema-note in the page and the 2026-04-22 log entry.*
-- [Llama 3 8B — TPU autoresearch optimization](experiments/llama3_8B_autoresearch_optimization/README.md) — program page for `meta-llama/Meta-Llama-3-8B` (and Llama 3.1-8B) on TPU v6e via torchax / native-JAX / MaxText. Status: **🚀 EXCEEDED MaxText reference (+9.9 % per-chip throughput) — [JAX exp 28b: native-JAX (Flax NNX) + scan + tokamax CE + tokamax-splash + MaxText XLA flag stack with **SparseCore offload of all-reduce + reduce-scatter + all-gather** at bs=4 seq=8192 = 62,142 TPS (7,768/chip), 43.6 % reported MFU](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md)** vs MaxText reference 7,069/chip = **+9.9 % throughput per chip**. Reported MFU gap is now **1.0 pp** (43.6 % vs MaxText 44.6 %), much of which is FLOP-counter normalization. **Cumulative climb 2026-04-26: 4,591 → 7,768 tok/s/chip = +69.2 %** vs the morning AMP-only torchax baseline (exp 20). Path: [exp 13 (HOST_OFFLOAD breakthrough)](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md) → exp 18 (bkv=2048 match): 7,471/chip 41.9 % → 🏆 **exp 27 (SC offload of RS+AG added to AR): 7,724/chip 43.3 %** at bs=5 → 🏆 **exp 28b (bs=4 density tweak): 7,768/chip 43.6 %**. Torchax frontier 2026-04-26: [exp 74b 6,559/chip 36.8 % MFU at bs=3 seq=8192](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md#follow-up--max_logit_const-exp-74). Key wins: (1) tokamax CE (chunked_xla impl) unlocks bs=3+ at seq=8192; (2) tokamax-shipped splash with perf knobs (+4.4 %); (3) MaxText's HOST_OFFLOAD scheduler-flag bundle — the breakthrough lever (+10 % alone); (4) splash `bkv=2048` matched to MaxText (+0.7 %); (5) **SparseCore offload of all three FSDP collectives — relays RS+AG off the TC** (+3.4 %); (6) bs=4 sweet-spot with full SC offload (+0.6 % over bs=5).
+- [Llama 3 8B — TPU autoresearch optimization](experiments/llama3_8B_autoresearch_optimization/README.md) — program page for `meta-llama/Meta-Llama-3-8B` (and Llama 3.1-8B) on TPU v6e via torchax / native-JAX / MaxText. Status: **🚀 EXCEEDED MaxText reference (+9.9 % per-chip throughput) — [JAX exp 28b: native-JAX (Flax NNX) + scan + tokamax CE + tokamax-splash + MaxText XLA flag stack with SparseCore offload of all-reduce + reduce-scatter + all-gather at bs=4 seq=8192 = 62,142 TPS (7,768/chip), 43.6 % reported MFU](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md)** vs MaxText reference 7,069/chip = **+9.9 % throughput per chip**. Reported MFU gap is now **1.0 pp** (43.6 % vs MaxText 44.6 %), much of which is FLOP-counter normalization. **Cumulative climb 2026-04-26: 4,591 → 7,768 tok/s/chip = +69.2 %** vs the morning AMP-only torchax baseline (exp 20). Path: [exp 13 (HOST_OFFLOAD breakthrough)](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md) → exp 18 (bkv=2048 match): 7,471/chip 41.9 % → 🏆 **exp 27 (SC offload of RS+AG added to AR): 7,724/chip 43.3 %** at bs=5 → 🏆 **exp 28b (bs=4 density tweak): 7,768/chip 43.6 %**. Torchax frontier 2026-04-26: [exp 74b 6,559/chip 36.8 % MFU at bs=3 seq=8192](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md#follow-up--max_logit_const-exp-74). Key wins: (1) tokamax CE (chunked_xla impl) unlocks bs=3+ at seq=8192; (2) tokamax-shipped splash with perf knobs (+4.4 %); (3) MaxText's HOST_OFFLOAD scheduler-flag bundle — the breakthrough lever (+10 % alone); (4) splash `bkv=2048` matched to MaxText (+0.7 %); (5) **SparseCore offload of all three FSDP collectives — relays RS+AG off the TC** (+3.4 %); (6) bs=4 sweet-spot with full SC offload (+0.6 % over bs=5).
 
 ## Hypotheses — ranked, open only (1)
 
-| # | Hypothesis | Model | Expected | Confidence | Effort |
-|---|---|---|---|---|---|
-| 1 | [int8 weight-only quantization (AQT/qwix)](hypotheses/llama3-jax-int8-weight-quantization.md) | llama3-8b-jax | +15-30 % step time | medium | L |
+
+| #   | Hypothesis                                                                                    | Model         | Expected           | Confidence | Effort |
+| --- | --------------------------------------------------------------------------------------------- | ------------- | ------------------ | ---------- | ------ |
+| 1   | [int8 weight-only quantization (AQT/qwix)](hypotheses/llama3-jax-int8-weight-quantization.md) | llama3-8b-jax | +15-30 % step time | medium     | L      |
+
 
 **Refuted via HLO inspection 2026-04-27** (after the fact, before any Pallas kernel was written):
+
 - ~~[Pallas RMSNorm + matmul-prologue fusion](hypotheses/llama3-jax-rmsnorm-matmul-prologue-fusion.md)~~ — XLA already inlines RMSNorm into each matmul's `kind=kOutput` Mosaic kernel (`fused_computation.47` for Q-proj, `.48` for K-proj, `.31`/`.32` for gate/up; all consume `add_rsqrt_fusion` + matmul → output, single kernel).
 - ~~[Pallas SwiGLU + down_proj fusion](hypotheses/llama3-jax-pallas-swiglu-downproj-fusion.md)~~ — XLA already fuses silu+mult+down_proj+residual into a single `kind=kOutput` kernel (`fused_computation.40` containing `fused_computation.8`'s silu*u body, `convolution.111`, and the residual add).
 
 These were the candidates expected to recover the 9.2 % loop-fusion line in the [exp 28b profile](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md#profile); since both are already done by the XLA fuser, the loop-fusion bytes must come from other ops (residual scratchpads, embedding-grad, FSDP all-gather staging, etc.) where Pallas-replacing the XLA fusion is unlikely to help. **Only int8/AQT remains as a meaningful per-chip throughput lever**; the bf16-MXU regime is saturated.
 
 ## Observations (1)
+
 - [llama3-8b-torchax-converged-stack-bottleneck-breakdown](observations/llama3-8b-torchax-converged-stack-bottleneck-breakdown.md) — xprof breakdown of the 2026-04-26 program-target frontier. Captured twice: (a) exp 56 mosaic_tpu CE stack via exp 61b — conv fusion 46.0 %, splash 24.4 %, CE 7.5 %, loop fusion 13.6 %, MXU util 51.9 %, MFU 34.8 %; (b) exp 74b chunked_xla + tokamax-splash final frontier via exp 79 — conv fusion **54.4 %**, splash 21.8 %, **CE collapsed to ~0 %**, loop fusion 15.2 %, MXU util **55.0 %**, MFU **36.8 %**. Matmul achieves 73.9 % MXU efficiency when running; the gap to MaxText 44.6 % MFU is matmul time-share, not matmul-tile efficiency.
 
 ## Analyses (1 +)
+
 - [2026-04-26 llama3-8b-torchax-day-summary](analyses/2026-04-26-llama3-8b-torchax-day-summary.md) — full day climb (4,591 → 6,559 tok/s/chip, +42.9 %); validated wins (chunked_xla CE, tokamax-splash, base2 / fuse_reciprocal / max_logit_const), refutations and invalidations (bf16-native CE invalid, q_seq_shards invalid, recipe XLA flags neutral, TP=2 -14 %, splash block sweeps refuted); analysis of the 7.8 pp gap to MaxText 44.6 % (deep-work levers required: faster splash bwd kernel, custom matmul prologue, MaxText-style layer fusion).
 
 ## Experiments (19)
+
 - 🏆 **[2026-04-26 jax-llama3-8b-exp27/28b SparseCore RS+AG offload + bs=4](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp27-28-sparsecore-rs-ag-offload-frontier.md)** — **accepted, NEW PROGRAM-TARGET BEST** — **62,142 TPS (7,768/chip), 43.6 % MFU** at `bs=4 seq=8192 fsdp=8`. Add `xla_tpu_enable_sparse_core_collective_offload_{reduce_scatter,all_gather}=true` (already had `…_all_reduce`) to relay all three FSDP collectives off the TensorCore onto the SparseCore — frees TC cycles for matmul. **+4.0 % per-chip vs prior frontier (exp 18: 7,471/chip 41.9 %)**; **+9.9 % per-chip vs MaxText reference (7,069/chip 44.6 %)**. Reported MFU gap to MaxText narrowed from 2.7 pp → 1.0 pp. bs=4 hits the sweet-spot once collectives stop hogging TC; bs=6 OOMs with bkv=2048 splash floor.
-- 🏆 **[2026-04-26 jax-llama3-8b-exp13/15/18 MaxText XLA flag stack + bkv=2048 match (chronicle)](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md)** — **accepted, prior frontier** — **59,765 TPS (7,471/chip), 41.9 % MFU** at `bs=5 seq=8192 fsdp=8` (exp 18 with bkv=2048). The HOST_OFFLOAD scheduler bundle from `maxtext/benchmarks/xla_flags_library.py` is the breakthrough lever (+10 % alone over JAX baseline). Includes density sweep + kernel-tune sub-experiment (tokamax-splash kernel-only +13.5 % over jax-experimental). Reproduces tokamax-splash perf knobs (`base2/fuse_recip/max_logit_const=30`) as +4.4 % over MaxText's `attention="flash"` path.
+- 🏆 **[2026-04-26 jax-llama3-8b-exp13/15/18 MaxText XLA flag stack + bkv=2048 match (chronicle)](experiments/llama3_8B_autoresearch_optimization/jax/experiments/2026-04-26-jax-exp13-maxtext-xla-stack-bs5-accepted.md)** — **accepted, prior frontier** — **59,765 TPS (7,471/chip), 41.9 % MFU** at `bs=5 seq=8192 fsdp=8` (exp 18 with bkv=2048). The HOST_OFFLOAD scheduler bundle from `maxtext/benchmarks/xla_flags_library.py` is the breakthrough lever (+10 % alone over JAX baseline). Includes density sweep + kernel-tune sub-experiment (tokamax-spladsh kernel-only +13.5 % over jax-experimental). Reproduces tokamax-splash perf knobs (`base2/fuse_recip/max_logit_const=30`) as +4.4 % over MaxText's `attention="flash"` path.
 - 🏆 **[2026-04-26 torchax-llama3-8b-exp72a tokamax-shipped splash attention](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp72a-tokamax-splash-bs3-seq8k-accepted.md)** — **accepted, NEW PROGRAM-TARGET BEST** — **51,139 TPS (6,392/chip), 35.8 % MFU** at `bs=3 seq=8192 fsdp=8`. Replace `jax.experimental.pallas.ops.tpu.splash_attention` with `tokamax._src.ops.experimental.tpu.splash_attention` and turn on its perf knobs (`use_base2_exp=True`, `fuse_reciprocal=True`). +1.3 % per-chip vs exp 65 frontier; +1.8 % at bs=2; +1.2 % at bs=4. Both knobs independently contribute (~+0.7-0.8 %) and compound. Surfaced by reading MaxText `attention_op.py` at `use_tokamax_splash` mode.
 - ⭐ **[2026-04-26 torchax-llama3-8b-exp62b → 66b chunked_xla CE iteration](experiments/llama3_8B_autoresearch_optimization/torchax/experiments/2026-04-26-exp62b-chunkedxla-ce-bs3-seq8k-accepted.md)** — **accepted, prior frontier**. Path:
   - exp 62b — `tokamax_ce_impl=chunked_xla` instead of `mosaic_tpu`: 50,424 TPS (6,303/chip), 35.3 % MFU — +1.6 % per-chip vs exp 56. Directly motivated by the xprof bottleneck breakdown (CE bwd was the asymmetric Pallas-recompute cost).
@@ -112,6 +133,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 ## Sources (45)
 
 ### xprof documentation — capture & deployment (6)
+
 - [xprof — capturing profiles](sources/2026-xprof-capturing-profiles.md) — how XProf traces are captured (programmatic, on-demand gRPC, continuous snapshot).
 - [xprof — JAX profiling](sources/2026-xprof-jax-profiling.md) — `jax.profiler` API (`start_trace`/`stop_trace`/`trace`/`TraceAnnotation`, `ProfileOptions`, TPU trace modes).
 - [xprof — PyTorch/XLA profiling](sources/2026-xprof-pytorch-xla-profiling.md) — `xp.start_trace` / `xp.Trace` surface and mark-step pitfalls.
@@ -120,6 +142,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [xprof — Kubernetes deployment](sources/2026-xprof-kubernetes-deployment.md) — aggregator/worker topology, headless gRPC discovery, round-robin LB.
 
 ### xprof documentation — UI & viewers (7)
+
 - [xprof — overview page](sources/2026-xprof-overview-page.md) — high-level performance summary: step-time breakdown, MFU, goodput, precisions, duty cycle.
 - [xprof — trace viewer](sources/2026-xprof-trace-viewer.md) — event timeline across host/device tracks (Steps, XLA Ops, Framework Ops, TraceMe, Host Offload, SparseCore, Launch Stats).
 - [xprof — memory profile](sources/2026-xprof-memory-profile.md) — HBM allocation/fragmentation analysis with timeline and peak-instant breakdown.
@@ -129,6 +152,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [xprof — terminology](sources/2026-xprof-terminology.md) — vocabulary: profile, session, run, host, device, step.
 
 ### xprof documentation — HLO & op stats (5)
+
 - [xprof — HLO op stats](sources/2026-xprof-hlo-op-stats.md) — ranked HLO ops by time; total vs self time; fusion, collective-op, replica-group breakdowns.
 - [xprof — HLO op profile](sources/2026-xprof-hlo-op-profile.md) — per-op detail: FLOPs/bytes, arithmetic intensity, roofline classification, wasted-time sort.
 - [xprof — framework op stats](sources/2026-xprof-framework-op-stats.md) — JAX/TF framework-level op breakdown; host vs device time; call-stack attribution.
@@ -136,15 +160,18 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [xprof — custom call profiling](sources/2026-xprof-custom-call-profiling.md) — profiling Pallas/Mosaic custom calls; LLO utilization tracks.
 
 ### xprof documentation — roofline & megascale (4)
+
 - [xprof — roofline model](sources/2026-xprof-roofline-model.md) — roofline tool: per-memory-tier rooflines, OI/FLOPs axes, cost-model vs HW-counter FLOPs.
 - [xprof — megascale stats](sources/2026-xprof-megascale-stats.md) — aggregated cross-slice collective stall statistics (slack, stall, required bandwidth).
 - [xprof — megascale viewer](sources/2026-xprof-megascale-viewer.md) — Perfetto-embedded per-collective action graph (D2H / NetworkSend / NetworkReceive / H2D).
 - [xprof — megascale viewer SQL](sources/2026-xprof-megascale-viewer-sql.md) — PerfettoSQL queries over megascale traces; p99/mean heavy-tail diagnostics.
 
 ### xprof-mcp documentation (1)
+
 - [xprof-mcp — TPU optimization guide](sources/2026-xprof-mcp-tpu-optimization.md) — **crown-jewel practical guide**: roofline, dimension alignment, dtype strategy, fusion, rematerialization, KV cache, XLA flags, decision trees.
 
 ### tokamax documentation (5)
+
 - [tokamax — supported ops](sources/2026-tokamax-supported-ops.md) — kernel matrix by platform (TPU / GPU / both) and backend (Mosaic / Triton / XLA).
 - [tokamax — basic usage](sources/2026-tokamax-basic-usage.md) — API surface: `implementation=`, autotune, jax-export caveats.
 - [tokamax — splash attention](sources/2026-tokamax-splash-attention.md) — TPU flash-attention variant: tunables (block sizes, QKV layouts), soft-cap, base-2 softmax.
@@ -152,18 +179,22 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [tokamax — benchmarking](sources/2026-tokamax-benchmarking.md) — kernel-only timing (`xprof_hermetic`, CUPTI); fwd / fwd_res / vjp / fwd_and_vjp modes.
 
 ### jax-huggingface tutorial series (4)
+
 - [jax-huggingface part 1 — single-device forward + jit](sources/2026-jax-huggingface-part-1.md) — Llama-2-7B bf16 forward on TPU v6e: 4.37s cold → 13ms cached via torchax + jax.jit; pytree + static-arg cookbook.
 - [jax-huggingface part 2 — 8-way tensor parallelism](sources/2026-jax-huggingface-part-2.md) — NeMo-Megatron TP recipe for Llama on 8 TPU v6e chips; 3.8× cached speedup (13ms → 3.4ms); sub-linear scaling flagged.
 - [jax-huggingface part 3 — StaticCache + jax.jit decode](sources/2026-jax-huggingface-part-3.md) — Llama-2-7B 50-token decode 130.9s → 14.77s (8.9×) via StaticCache + functional_call; 13.48GB captured-constants warning.
 - [jax-huggingface part 4 — SD2 via torchax.compile](sources/2026-jax-huggingface-part-4.md) — Stable Diffusion 2-base on **A100 GPU** (not TPU): 5.9s → 1.07s/image after fixing `methods_to_compile=['decode']` for VAE.
 
 ### External publications (1)
+
 - [Ultra-Scale Playbook (2025)](sources/2025-ultrascale-playbook.md) — Tazi et al., Hugging Face, Feb 2025. GPU-cluster LLM-training playbook (5D parallelism, FlashAttention, FP8, kernel engineering). Ingested with GPU↔TPU contrast emphasis; 90 figures saved under `raw/assets/ultrascale-playbook/`.
 
 ### Methodology (1)
+
 - [LLM Wiki (Karpathy)](sources/2026-karpathy-llm-wiki.md) — the idea file this wiki's SCHEMA.md descends from. Raw/wiki/schema layers; ingest/query/lint ops; index+log navigation pair; contradiction-flag convention.
 
 ### Scaling-book chapters (11, ingested 2026-04-23 from [scaling-book](codebases/scaling-book.md) @ `6cda371`, book dated 2025-02-04)
+
 - [Ch 1 — Rooflines](sources/2025-scaling-book-ch1-roofline.md) — three-constraint model + critical intensity thresholds (v5e 240, v5p 164, H100 296).
 - [Ch 2 — How to Think About TPUs](sources/2025-scaling-book-ch2-tpus.md) — TPU hardware (MXU / VPU / VMEM / HBM / ICI / DCN / PCIe); canonical per-chip specs for v5e/v5p.
 - [Ch 3 — Sharded Matrices](sources/2025-scaling-book-ch3-sharding.md) — four-case sharded-matmul taxonomy; collective-cost formulas.
@@ -179,6 +210,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 ## Codebases (27)
 
 ### Wave 4 follow-up — deferred Pallas ecosystem (5, added 2026-04-23)
+
 - [graphcast](codebases/graphcast.md) — commit `08cf736` — DeepMind weather model; splash wrapper + `WeatherMeshMask` (non-LLM block-sparse reference).
 - [simply](codebases/simply.md) — commit `f40b81e` — DeepMind serving framework; RPA wrapper that documents the DMA-overhead-bytes autotune heuristic (0.5 MiB virtual bytes).
 - [jaxite](codebases/jaxite.md) — commit `e4a3351` — Google FHE library; only non-ML Pallas TPU kernel in this wiki (CGGI bootstrap).
@@ -186,6 +218,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [aqt](codebases/aqt.md) — commit `9d1667e` — deprecated; superseded by qwix.
 
 ### Wave 4 — Pallas kernel ecosystem (11, added 2026-04-23)
+
 - [axlearn](codebases/axlearn.md) — commit `b479714` — Apple's training framework; **only public TPU Pallas Mamba1/Mamba2/RAttention SSM kernels**, plus splash extensions (dropout + logit sink); GPU Triton megablox (`arXiv:2507.05411`).
 - [tpu-inference](codebases/tpu-inference.md) — commit `a657060d` — vLLM's TPU backend; **broadest novel Pallas surface** (RPA v2/v3, MLA v1/v2, fused_moe v1, quantized_matmul blockwise, all_gather_matmul, GDN, SparseCore, structured-sparse-matmul); crown-jewel tuning tables (1,200+ RPA v2 + 600+ quantized_matmul entries; v6 96 MiB / v7 48 MiB VMEM).
 - [maxtext](codebases/maxtext.md) — commit `532c8b3d8` — AI-Hypercomputer reference JAX trainer for Gemma/Llama/DeepSeek/Qwen/Mistral/Kimi; splash + ragged-paged-attention + megablox GMM + MLIR-dialect SparseCore. Closest public analogue of the gemma4 program.
@@ -200,7 +233,8 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [tpu-recipes](codebases/tpu-recipes.md) — commit `e284e361` — AI-Hypercomputer's per-(model, hardware, topology) reproduction recipes for Trillium (v6e) and Ironwood (v7x); **canonical reference for MaxText `tuning_params` blocks** (`remat_policy`, `decoder_layer_input: offload`, per-projection offload, FSDP sharding) on Llama 3.1 / Gemma 3-4 / Mixtral / DeepSeek 3 / Qwen 3 / GPT-OSS / GPT-3 175B, plus matmul + HBM microbenchmarks.
 
 ### Wave 1–3 (10)
-- [jax](codebases/jax.md) — commit `feb5ba0` — The JAX library itself: transformations, sharding, `jax.profiler`, **`jax.experimental.roofline`**, Pallas DSL, and the first-party reference TPU kernel tree at `jax.experimental.pallas.ops.tpu.*` (splash_attention, paged_attention, ragged_paged_attention, megablox, flash_attention, matmul, all_gather, threefry). Ground-truth for every other codebase in this wiki.
+
+- [jax](codebases/jax.md) — commit `feb5ba0` — The JAX library itself: transformations, sharding, `jax.profiler`, `**jax.experimental.roofline`**, Pallas DSL, and the first-party reference TPU kernel tree at `jax.experimental.pallas.ops.tpu.*` (splash_attention, paged_attention, ragged_paged_attention, megablox, flash_attention, matmul, all_gather, threefry). Ground-truth for every other codebase in this wiki.
 - [pallas-forge](codebases/pallas-forge.md) — commit `090510b` — Pallas kernel auto-tuning framework (tiled matmul, fused RMSNorm+residual, SwiGLU/GeGLU); **forward-only — no custom_vjp** so unusable in training as-is. Already evaluated via gemma4 exp 20 (rejected).
 - [jax-huggingface](codebases/jax-huggingface.md) — commit `93328b2` (subfolder of `qihqi/learning_machine`) — 4-part tutorial + scripts running HuggingFace Llama-2-7B and Stable Diffusion under JAX via torchax.
 - [xprof](codebases/xprof.md) — commit `2e33c01` — OpenXLA profiler + TensorBoard plugin; canonical metric vocabulary and profile-capture surface for every experiment.
@@ -214,6 +248,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 ## Concepts (96)
 
 ### Pallas-authoring patterns (11, stubs — added 2026-04-23)
+
 - [online-softmax-with-logit-sink](concepts/online-softmax-with-logit-sink.md) — axlearn splash extension; add `exp(sink - m_final)` to normalizer.
 - [in-kernel-dropout](concepts/in-kernel-dropout.md) — generate dropout mask from prng_key + block indices (avoids HBM mask materialization).
 - [two-level-chunk-recomputation](concepts/two-level-chunk-recomputation.md) — SSD / Mamba2 pattern for linear-recurrence kernels.
@@ -227,14 +262,17 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [nvidia-weight-tile-bytes-limit](concepts/nvidia-weight-tile-bytes-limit.md) — 101,376-byte per-SM shared-memory weight-tile cap (H100/GB10/A100).
 
 ### Autotune-harness patterns (3, stubs — added 2026-04-23)
+
 - [jaxpr-hash-cache-keys](concepts/jaxpr-hash-cache-keys.md) — pin autotune-cache to stringified jaxpr (marin/levanter pattern).
 - [compile-time-aware-autotune-filtering](concepts/compile-time-aware-autotune-filtering.md) — discard candidates whose compile cost > 0.20 s over baseline.
 - [vmem-oom-fallthrough](concepts/vmem-oom-fallthrough.md) — catch `resource_exhausted … vmem` at autotune, demote candidate.
 
 ### Hardware facts (1, added 2026-04-23)
+
 - [vmem-budget](concepts/vmem-budget.md) — per-generation VMEM: v4 32, v5e 32, v5p 95, **v6e 96**, **v7 48** MiB (v6e→v7 halves).
 
 ### Architecture & hardware (12)
+
 - [memory-hierarchy](concepts/memory-hierarchy.md) — TPU memory stack (HBM, VMEM, SMEM, CMEM, host RAM).
 - [hbm](concepts/hbm.md) — on-package high-bandwidth memory.
 - [vmem](concepts/vmem.md) — on-chip vector scratchpad.
@@ -249,6 +287,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [multi-slice](concepts/multi-slice.md) — workload spanning multiple TPU slices.
 
 ### Performance metrics & roofline (13)
+
 - [mfu](concepts/mfu.md) — Model FLOPs Utilization.
 - [step-time](concepts/step-time.md) — wall-clock per training step.
 - [mxu-utilization](concepts/mxu-utilization.md) — matrix-unit achieved/peak throughput.
@@ -264,6 +303,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [ici-roofline](concepts/ici-roofline.md) — ICI-bandwidth ceiling for sharded ops.
 
 ### Compiler & HLO (12)
+
 - [hlo](concepts/hlo.md) — XLA High-Level Optimizer IR.
 - [hlo-op](concepts/hlo-op.md) — single HLO operation node.
 - [xla-fusion](concepts/xla-fusion.md) — op-fusion compiler pass.
@@ -278,6 +318,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [hlo-dumping-and-diffing](concepts/hlo-dumping-and-diffing.md) — workflow for inspecting pass-by-pass HLO.
 
 ### Kernels (9)
+
 - [flash-attention](concepts/flash-attention.md) — tiled SRAM-resident attention algorithm.
 - [splash-attention](concepts/splash-attention.md) — TPU-native flash-family attention (sparse-mask, soft-cap).
 - [ring-attention](concepts/ring-attention.md) — ring-of-K/V streaming for long-sequence attention; tokamax kernel exists but not wired to public API.
@@ -289,6 +330,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [base2-softmax](concepts/base2-softmax.md) — `exp(x) = 2^(x·log2 e)` rewrite for TPU's native base-2 exp.
 
 ### Optimization techniques (7)
+
 - [rematerialization](concepts/rematerialization.md) — recompute activations to save HBM.
 - [scan-over-layers](concepts/scan-over-layers.md) — `jax.lax.scan` pattern; O(N)→O(1) compile time.
 - [dimension-alignment](concepts/dimension-alignment.md) — batch/hidden shape divisibility rules for MXU.
@@ -298,6 +340,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [training-memory-budget](concepts/training-memory-budget.md) — rule of thumb: ~16 bytes/param for bf16 + AdamW.
 
 ### Parallelism & collectives (12)
+
 - [fsdp](concepts/fsdp.md) — Fully Sharded Data Parallelism (all-gather + reduce-scatter on ICI).
 - [tensor-parallelism](concepts/tensor-parallelism.md) — op-level split; cheap within ICI island (≤8).
 - [sequence-parallelism](concepts/sequence-parallelism.md) — TP companion that shards LayerNorm/Dropout along sequence; converts internal all-reduce to reduce-scatter + all-gather.
@@ -312,6 +355,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [send-recv-done](concepts/send-recv-done.md) — XLA's four-op async-collective pattern on TPU.
 
 ### Inference (5)
+
 - [kv-cache](concepts/kv-cache.md) — per-token key/value cache; makes decode bandwidth-bound at small batch.
 - [static-cache](concepts/static-cache.md) — fixed-shape KV cache enabling `jax.jit`.
 - [continuous-batching](concepts/continuous-batching.md) — paged-attention serving pattern.
@@ -319,6 +363,7 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [serving-warmup](concepts/serving-warmup.md) — pre-compile all shapes before serving traffic.
 
 ### Profiling (11)
+
 - [profile-capture](concepts/profile-capture.md) — umbrella for XProf capture APIs.
 - [jax-trace](concepts/jax-trace.md) — `jax.profiler` capture surface.
 - [pytorch-xla-trace](concepts/pytorch-xla-trace.md) — `xp.start_trace` / `xp.Trace` surface.
@@ -332,11 +377,14 @@ These were the candidates expected to recover the 9.2 % loop-fusion line in the 
 - [llo-utilization](concepts/llo-utilization.md) — custom-call HW-resource usage track in the trace viewer.
 
 ## Observations (0)
+
 *None yet.*
 
 ## Analyses (5)
+
 - [2026-04-24 Gemma 4 E4B — JAX fp32-master + seq=8192 regime ceiling (exp 52–53)](analyses/2026-04-24-gemma4-jax-fp32master-seq8k-regime.md) — new-regime baseline (exp 52 at 26,807 TPS seq=2048 b=1 fp32-master) + seq=8192 infeasibility probe on v6e-4. Legacy bf16 also OOMs at seq=8192 (memory wall is not AMP-specific). XLA compile-time peak HBM non-monotonic in seq_len (seq=6144 = 49.66 GiB, seq=8192 = 35.18 GiB). Three-branch forward path documented.
 - [2026-04-23 Pallas kernel directory](analyses/2026-04-23-pallas-kernel-directory.md) — repo-by-repo catalog of ~200 Pallas kernels across ~30 repos, with source-code refs, stability, perf claims, use cases, and callers. Cross-cutting functional-category tables + 6 subpages ([§1 JAX+tokamax](analyses/pallas-kernel-directory/01-upstream-jax-tokamax.md), [§2 AI-Hypercomputer](analyses/pallas-kernel-directory/02-ai-hypercomputer.md), [§3 Inference engines](analyses/pallas-kernel-directory/03-inference-engines.md), [§4 Research labs](analyses/pallas-kernel-directory/04-research-labs.md), [§5 Frameworks & quant](analyses/pallas-kernel-directory/05-frameworks-quant.md), [§6 Community](analyses/pallas-kernel-directory/06-community-research.md)). Confirms Zig-Zag ring attention absent everywhere; identifies AlphaFold3 @ v3.0.1 fused GLU and apple/axlearn SSM kernels as the key novel content.
 - [2026-04-23 Pallas kernel source survey](analyses/2026-04-23-pallas-kernel-source-survey.md) — web-research inventory of every public source of Pallas kernel code. Identifies 5 top ingest candidates (maxtext, tpu-inference, maxdiffusion, axlearn, sglang-jax) and updates 3 open hypothesis candidates on the Ultra-Scale Playbook page with reference implementations found in the wild.
 - [2026-04-23 Gemma 4 E4B on v6e-4 — optimization ceiling (exp 1–33, torchax stack)](analyses/2026-04-23-gemma4-v6e4-optimization-ceiling.md) — synthesis of the 33-experiment torchax-stack loop. Best = exp 25 (33,372 TPS, +9.2% over baseline). Loop at diminishing returns; identifies Pallas-fuses-into-matmul lesson from exp 33 and proposes next levers (scan-over-layers Option B, compile cache, hardware scale-up).
 - [2026-04-24 Gemma 4 E4B — JAX-stack ceiling + process retrospective (exp 34–42)](analyses/2026-04-24-gemma4-jax-ceiling-and-process-retrospective.md) — JAX-stack analog. Best = exp 36 (34,614 TPS / 23.05 % MFU, **+3.7 % over torchax session-best**). Explains why JAX beats torchax on same hardware (compile-time HBM ~1.25 GiB lower; no torchax dispatch overhead). Includes cross-stack generalizable lessons + **process retrospective** with concrete `program.md` / `SCHEMA.md` rule additions.
+

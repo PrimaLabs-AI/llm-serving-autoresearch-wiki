@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] run-benchmark | gpt-oss-20B OPT on h100-1
+
+**Op**: run-benchmark
+**Pages created**: wiki/hypotheses/gptoss-20b-opt-baseline.md, wiki/experiments/2026-05-04-gptoss20b-h100-opt.md
+**Pages updated**: wiki/index.md
+**Key result**: First end-to-end Mac-driver round backed by `vllm-tune`'s `run_matrix.sh`. OPT config (Eagle3 k=3 + bf16 + fp8 KV + blk128 + batch16k) booted in 192s on vLLM 0.19.0 + H100 80GB SXM at GPU_MEM=0.85; ran decode/prefill/sharegpt @ per-replica peak concurrencies in 6 min wall-clock. **13,945 / 3,501 / 16,192 output tok/s** at c=128/512/256, 100% success on all cells. Eagle3 acceptance: pos0=361K → pos1=278K (77%) → pos2=226K (62%).
+**Notes**: Validated the wiki + vllm-tune integration architecture end-to-end. Proves the vision: Mac drives, vllm-tune executes, results back to wiki. Replaces the toy `benchmark_harness.py` path used in rounds 1–6 (which never produced valid metrics across 6 attempts due to vLLM/SGLang dep collisions, wrong module paths, and stale-artifact confusion). Next: write up `wiki/codebases/vllm-tune.md`, ingest the 17 docs in `~/vllm-tune/docs/` as sources, and pivot `prompts/run.md` to drive `run_matrix.sh` instead of the old harness.
+
 ## [2026-05-01] manual | seed wiki/hardware/
 
 **Op**: manual
