@@ -26,11 +26,11 @@
 
 ## Hypotheses — ranked, open only (12)
 
-**Qwen2.5-7B autoresearch program (NEW — generalization test)**
+**Qwen2.5-7B autoresearch program (NEW — generalization test, round 9 inconclusive)**
 
 | # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
 |---|---|---|---|---|---|---|
-| 1 | [Qwen2.5-7B BASE on H100 — establish floor](hypotheses/qwen2.5-7b-base-on-h100.md) | vLLM | multi-turn-agentic | 100% success at c=256/1024/512 (decode/prefill/sharegpt) | high | S |
+| 1 | [Qwen2.5-7B BASE rerun on H100 (lower prefill conc)](hypotheses/qwen2.5-7b-base-on-h100.md) | vLLM | multi-turn-agentic | re-run with `ulimit -n 65536` or c≤512 to resolve inconclusive prefill | high | S |
 
 **gpt-oss-20B 9-config matrix on H100 (active program — round 7 OPT supported)**
 
@@ -56,6 +56,10 @@
 ### Supported (1)
 
 - [gpt-oss-20B OPT on 1× H100 — per-replica baseline](hypotheses/gptoss-20b-opt-baseline.md) — established 13,945 / 3,501 / 16,192 output tok/s on decode/prefill/sharegpt at the per-replica peak concurrencies. See [2026-05-04 experiment](experiments/2026-05-04-gptoss20b-h100-opt.md).
+
+### Inconclusive (1)
+
+- [Qwen2.5-7B BASE on 1× H100 — per-replica baseline](hypotheses/qwen2.5-7b-base-on-h100.md) — decode @ c=256 (7,293 tok/s) and sharegpt @ c=512 (8,279 tok/s) ran cleanly; prefill @ c=1024 hit a client-side `ulimit` ceiling (Errno 24, too many open files), so the BASE config wasn't actually stress-tested at that concurrency. See [2026-05-04 experiment](experiments/2026-05-04-qwen2.5-7b-base-on-h100.md).
 
 ### Retired (1)
 

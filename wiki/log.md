@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] run-benchmark | Qwen2.5-7B BASE on h100-1 (round 9 v2)
+
+**Op**: run-benchmark (autopilot generalization test, partially driven by hand)
+**Pages created**: wiki/models/qwen2.5-7b.md, wiki/hypotheses/qwen2.5-7b-base-on-h100.md, wiki/experiments/2026-05-04-qwen2.5-7b-base-on-h100.md
+**Pages updated**: wiki/hypotheses/qwen2.5-7b-base-on-h100.md (status=inconclusive + Result section), wiki/index.md
+**Key result**: Qwen2.5-7B + H100 + BASE (stock vLLM 0.19.0). 2/3 cells passed. **decode @ c=256: 7,293 output tok/s**, **sharegpt @ c=512: 8,279 output tok/s**. Prefill @ c=1024 failed at the **client side** with `Errno 24: Too many open files` (evalscope tried 1024 concurrent sockets, hit `ulimit -n`). vLLM stayed healthy. Verdict: **inconclusive** — re-run with `ulimit -n 65536` or c≤512 to resolve.
+**Notes**: First non-gpt-oss target through the loop. Validates the wiki + bench architecture generalizes to a new model — the autopilot correctly identified `bench/.../run_matrix.sh` is hardcoded to gpt-oss-20B and took the documented fallback path (direct `docker run vllm/vllm-openai:v0.19.0` + ad-hoc 3-cell evalscope loop). However, after the bench completed, claude --print stalled in the writeup phase for ~25 minutes; killed and wrote the experiment page from the structured CSV manually. Architectural validation: passed. Autopilot writeup-phase reliability: needs work.
+
 ## [2026-05-04] manual | self-contain bench tooling, ingest vllm-tune, prep round 8
 
 **Op**: manual (slice 9 follow-up)

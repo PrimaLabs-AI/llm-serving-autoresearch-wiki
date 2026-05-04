@@ -6,7 +6,7 @@ model: qwen2.5-7b
 engine: vllm
 workload: multi-turn-agentic
 hardware: h100
-status: open
+status: inconclusive
 expected_gain: "establish per-replica floor (decode/prefill/sharegpt at 256/1024/512); no claim about which knob will help"
 confidence: high
 effort: S
@@ -67,6 +67,10 @@ Per-replica concurrency choices vs the gpt-oss-20B baseline (round 7 OPT measure
 - **Trust-remote-code**: Qwen requires `--trust-remote-code` for some chat templates. Container launch must include it.
 - **No Eagle3 draft**: There's no public Qwen2.5-7B Eagle3 speculator. So all spec-related ablations are NOT viable for this model unless we either (a) train one, (b) use ngram speculation (`--speculative-config '{"method":"ngram","prompt_lookup_max":4,"prompt_lookup_min":1,"num_speculative_tokens":3}'`), or (c) use an off-the-shelf small-model draft (Qwen2.5-1.5B-Instruct or 0.5B).
 - **Lossless gate**: not yet wired into the bench (slice 10). For this round, mark "lossless gate not yet validated" in the verdict reasoning.
+
+## Result
+
+[2026-05-04 experiment](../experiments/2026-05-04-qwen2.5-7b-base-on-h100.md) — verdict `inconclusive`. Decode @ c=256 (7,293 output tok/s) and sharegpt @ c=512 (8,279 output tok/s) ran cleanly with 100% success. Prefill @ c=1024 failed with a client-side `Errno 24: Too many open files` ulimit cap; the BASE config itself was never actually stress-tested at that concurrency. Re-run with `ulimit -n 65536` (or drop concurrency to c=512) to resolve.
 
 ## See also
 
