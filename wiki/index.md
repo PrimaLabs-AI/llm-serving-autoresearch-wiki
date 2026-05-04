@@ -26,11 +26,13 @@
 
 ## Hypotheses — ranked, open only (12)
 
-**Qwen2.5-7B autoresearch program (NEW — generalization test, round 9 inconclusive)**
+**Qwen2.5-7B autoresearch program (active — BASE supported, ablations next)**
 
 | # | Hypothesis | Engine | Workload | Expected | Confidence | Effort |
 |---|---|---|---|---|---|---|
-| 1 | [Qwen2.5-7B BASE rerun on H100 (lower prefill conc)](hypotheses/qwen2.5-7b-base-on-h100.md) | vLLM | multi-turn-agentic | re-run with `ulimit -n 65536` or c≤512 to resolve inconclusive prefill | high | S |
+| 1 | [Qwen2.5-7B prefix-caching on H100](hypotheses/qwen2.5-7b-prefix-caching-on-h100.md) (next — pending) | vLLM | multi-turn-agentic | +10-20% sharegpt tok/s vs BASE | medium | S |
+| 2 | [Qwen2.5-7B chunked-prefill on H100](hypotheses/qwen2.5-7b-chunked-prefill-on-h100.md) (next — pending) | vLLM | multi-turn-agentic | −30-50% prefill TTFT vs BASE | medium | S |
+| 3 | [Qwen2.5-7B fp8 KV cache on H100](hypotheses/qwen2.5-7b-fp8-kv-on-h100.md) (next — pending) | vLLM | multi-turn-agentic | +50-100% max concurrency vs BASE | medium | S |
 
 **gpt-oss-20B 9-config matrix on H100 (active program — round 7 OPT supported)**
 
@@ -53,13 +55,10 @@
 | 11 | [Chunked prefill for high concurrency](hypotheses/chunked-prefill-high-concurrency.md) | vLLM | parallel-tool-use | 25-40% TTFT reduction | medium | S |
 | 12 | [Speculative decoding for chain-of-thought](hypotheses/speculative-decoding-cot.md) | vLLM | chain-of-thought | 1.5-2x output tok/s | medium | M |
 
-### Supported (1)
+### Supported (2)
 
-- [gpt-oss-20B OPT on 1× H100 — per-replica baseline](hypotheses/gptoss-20b-opt-baseline.md) — established 13,945 / 3,501 / 16,192 output tok/s on decode/prefill/sharegpt at the per-replica peak concurrencies. See [2026-05-04 experiment](experiments/2026-05-04-gptoss20b-h100-opt.md).
-
-### Inconclusive (1)
-
-- [Qwen2.5-7B BASE on 1× H100 — per-replica baseline](hypotheses/qwen2.5-7b-base-on-h100.md) — decode @ c=256 (7,293 tok/s) and sharegpt @ c=512 (8,279 tok/s) ran cleanly; prefill @ c=1024 hit a client-side `ulimit` ceiling (Errno 24, too many open files), so the BASE config wasn't actually stress-tested at that concurrency. See [2026-05-04 experiment](experiments/2026-05-04-qwen2.5-7b-base-on-h100.md).
+- [gpt-oss-20B OPT on 1× H100 — per-replica baseline](hypotheses/gptoss-20b-opt-baseline.md) — 13,945 / 3,501 / 16,192 output tok/s on decode/prefill/sharegpt at c=128/512/256 per-replica peaks. See [round-7 OPT experiment](experiments/2026-05-04-gptoss20b-h100-opt.md).
+- [Qwen2.5-7B BASE on 1× H100 — per-replica baseline](hypotheses/qwen2.5-7b-base-on-h100.md) — 5,973 / 3,190 / 8,282 output tok/s on decode/prefill/sharegpt at c=256/1024/512 per-replica peaks. Stock vLLM 0.19.0 + `--gpu-memory-utilization 0.9`, no other flags. See [rerun experiment](experiments/2026-05-04-qwen2.5-7b-base-rerun.md). The [v2 inconclusive run](experiments/2026-05-04-qwen2.5-7b-base-on-h100.md) is preserved as the client-ulimit-ceiling reference.
 
 ### Retired (1)
 

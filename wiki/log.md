@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] run-benchmark | Qwen2.5-7B BASE rerun on h100-1 (closes inconclusive)
+
+**Op**: run-benchmark (manual, after the v2 inconclusive verdict)
+**Pages created**: wiki/experiments/2026-05-04-qwen2.5-7b-base-rerun.md
+**Pages updated**: wiki/hypotheses/qwen2.5-7b-base-on-h100.md (status=supported + Result rewrite), wiki/index.md (Supported list 1 → 2; gpt-oss-20B program rows simplified)
+**Key result**: All three cells passed at 100% success after the bench-side `RLIMIT_NOFILE` auto-bump landed in commit `4b2fe53`. Per-replica on 1× H100 80 GB SXM: **decode @ c=256: 5,973 output tok/s** | **prefill @ c=1024: 3,190 output tok/s** (the cell that failed last time) | **sharegpt @ c=512: 8,282 output tok/s**. ~13 min wall-clock end-to-end including 60s cold start. Verdict: **supported**. Qwen-7B BASE baseline established.
+**Notes**: The autopilot driver (claude --print) was unavailable for this rerun due to upstream classifier outage — same root cause as the round 9 v2 writeup stall and v3 reachability hang. Drove the rerun manually via direct SSH; the bench tooling and wiki schema were unchanged. This is a graceful-degradation success: the architecture works hand-driven OR autopilot-driven; only the autonomy layer depends on Anthropic API health.
+
 ## [2026-05-04] run-benchmark | Qwen2.5-7B BASE on h100-1 (round 9 v2)
 
 **Op**: run-benchmark (autopilot generalization test, partially driven by hand)

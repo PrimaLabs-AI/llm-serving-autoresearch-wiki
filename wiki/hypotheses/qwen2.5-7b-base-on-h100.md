@@ -6,7 +6,7 @@ model: qwen2.5-7b
 engine: vllm
 workload: multi-turn-agentic
 hardware: h100
-status: open
+status: supported
 expected_gain: "establish per-replica floor (decode/prefill/sharegpt at 256/1024/512); no claim about which knob will help"
 confidence: high
 effort: S
@@ -70,7 +70,12 @@ Per-replica concurrency choices vs the gpt-oss-20B baseline (round 7 OPT measure
 
 ## Result
 
-[2026-05-04 experiment](../experiments/2026-05-04-qwen2.5-7b-base-on-h100.md) — verdict `inconclusive`. Decode @ c=256 (7,293 output tok/s) and sharegpt @ c=512 (8,279 output tok/s) ran cleanly with 100% success. Prefill @ c=1024 failed with a client-side `Errno 24: Too many open files` ulimit cap; the BASE config itself was never actually stress-tested at that concurrency. Re-run with `ulimit -n 65536` (or drop concurrency to c=512) to resolve.
+**Supported** — [2026-05-04 rerun experiment](../experiments/2026-05-04-qwen2.5-7b-base-rerun.md). All three cells passed at 100% success after the bench-side ulimit auto-bump landed in commit `4b2fe53`:
+- decode @ c=256: 5,973 output tok/s
+- prefill @ c=1024: 3,190 output tok/s
+- sharegpt @ c=512: 8,282 output tok/s
+
+(The original [v2 inconclusive run](../experiments/2026-05-04-qwen2.5-7b-base-on-h100.md) is preserved as the failure-mode record — useful future context for "client ulimit caps c≥1024 cells".)
 
 ## See also
 
