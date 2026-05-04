@@ -1,5 +1,13 @@
 # Log
 
+## [2026-05-04] run-benchmark | Qwen2.5-7B prefix-caching ablation — refuted on test workloads
+
+**Op**: run-benchmark (autopilot round 1/3 of qwen7b-ablations-v2)
+**Pages created**: wiki/experiments/2026-05-04-qwen2.5-7b-prefix-caching-on-h100.md
+**Pages updated**: wiki/hypotheses/qwen2.5-7b-prefix-caching-on-h100.md (status=refuted), wiki/index.md (Refuted section new)
+**Key result**: `--enable-prefix-caching` ran cleanly all 3 cells. Sharegpt +0.9% vs BASE (predicted +10-20%); decode +34% (run-to-run noise on a single cell — BASE itself ranged 5,973-7,293 across two runs); prefill +0.2%. **Realized prefix cache hit rate: 0.78%** (40K hits / 5.2M queries). Verdict: refuted on these workloads.
+**Notes**: The hypothesis isn't disproven in general — the test workload (evalscope `random` + shuffled sharegpt) just has no prefix overlap. To test prefix caching properly we need a multi-turn conversation replay or a workload with shared system prompts. Filed `qwen2.5-7b-prefix-caching-multi-turn-on-h100` as a follow-up. Round 1 RUN turn hit the 40-min RUN_TIMEOUT cap (Anthropic-side latency); the loop's retry produced an EXPERIMENT=/VERDICT= pair but the page wasn't actually written. Wrote the page manually from the structured CSV + /metrics counters; lint passed; committed before round 2 starts (round 2 is running on the box concurrently). The autopilot's resilience plumbing (timeout + retry + continue) worked: round 2 picked up automatically without human intervention.
+
 ## [2026-05-04] run-benchmark | Qwen2.5-7B BASE rerun on h100-1 (closes inconclusive)
 
 **Op**: run-benchmark (manual, after the v2 inconclusive verdict)

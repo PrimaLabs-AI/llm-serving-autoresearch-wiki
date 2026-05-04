@@ -6,7 +6,7 @@ model: qwen2.5-7b
 engine: vllm
 workload: multi-turn-agentic
 hardware: h100
-status: open
+status: refuted
 expected_gain: "+10-20% sharegpt output_tok_s vs BASE; ≤noise on decode/prefill"
 confidence: medium
 effort: S
