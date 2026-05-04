@@ -6,7 +6,7 @@ model: qwen2.5-7b
 engine: vllm
 workload: multi-turn-agentic
 hardware: h100
-status: inconclusive
+status: open
 expected_gain: "establish per-replica floor (decode/prefill/sharegpt at 256/1024/512); no claim about which knob will help"
 confidence: high
 effort: S

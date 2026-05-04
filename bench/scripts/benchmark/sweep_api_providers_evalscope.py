@@ -44,6 +44,7 @@ import argparse
 import csv
 import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -51,6 +52,29 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+
+def _raise_open_file_limit(target: int = 65536) -> None:
+    """Raise RLIMIT_NOFILE so high-concurrency cells don't hit `Errno 24:
+    Too many open files` on the client side.
+
+    evalscope opens one TCP socket per concurrent request. SSH sessions and
+    most distros set the soft limit to 1024 by default, which caps the
+    benchmark harness at c=~900 even when the server can handle more. We
+    bump the soft limit up to min(target, hard) — covers the c=1024-2048
+    band we actually run today.
+    """
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        new_soft = min(target, hard)
+        if new_soft > soft:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+    except (ValueError, OSError) as e:
+        # Don't fail the run; just print the cap we ended up with.
+        print(f"warning: could not raise RLIMIT_NOFILE to {target}: {e}", file=sys.stderr)
+
+
+_raise_open_file_limit()
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
